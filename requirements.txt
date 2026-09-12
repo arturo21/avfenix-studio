@@ -1,0 +1,16 @@
+# Dependencias del sistema GTK3 / PyGObject
+PyGObject<=3.48.2
+pycairo
+
+# Bus de comunicación WebSocket (IPC)
+websockets>=10.4
+
+# Cliente de API para OpenRouter (LLM)
+httpx>=0.24.0
+openai>=1.0.0
+
+# Gestor de repositorios Git
+GitPython>=3.1.30
+
+# Manejador de terminal PTY
+ptyprocess>=0.7.0

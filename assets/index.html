@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="es" class="h-full bg-[#1e1e1e] text-gray-200 select-none">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AVFenix Studio</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Custom CSS styles -->
+    <link rel="stylesheet" href="styles.css">
+    <!-- Xterm.js Terminal CDN -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.1.0/css/xterm.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/xterm@5.1.0/lib/xterm.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.7.0/lib/xterm-addon-fit.min.js"></script>
+    <!-- Monaco Editor AMD Loader -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js"></script>
+    <!-- Marked.js & Highlight.js for Chat Markdown Rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
+</head>
+<body class="h-full flex flex-col overflow-hidden font-sans">
+
+    <!-- Top Activity Bar -->
+    <header class="h-10 bg-[#181818] border-b border-[#2d2d2d] flex items-center justify-between px-4 flex-shrink-0 z-10">
+        <div class="flex items-center space-x-2">
+            <span class="text-[#e25c34] font-bold tracking-wider text-sm"><i class="fa-solid fa-fire-alt mr-1.5"></i>AVFENIX STUDIO</span>
+            <span class="text-xs bg-[#2b2b2b] px-2 py-0.5 rounded text-gray-400">GTK 3 & WebKit Core</span>
+        </div>
+        <div class="flex items-center space-x-3 text-xs">
+            <span id="ws-status" class="flex items-center space-x-1.5 text-red-500 font-medium">
+                <span class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
+                <span>Desconectado</span>
+            </span>
+            <div class="h-4 w-[1px] bg-[#2d2d2d]"></div>
+            <span id="current-file-label" class="text-gray-400 font-mono italic">Sin archivo abierto</span>
+        </div>
+    </header>
+
+    <!-- Main Workspace Container -->
+    <main class="flex-1 flex overflow-hidden relative">
+        
+        <!-- Left Sidebar Toolbar -->
+        <div class="w-12 bg-[#181818] border-r border-[#2d2d2d] flex flex-col items-center py-2 space-y-4 flex-shrink-0">
+            <button id="btn-nav-explorer" class="w-10 h-10 rounded flex items-center justify-center text-[#e25c34] bg-[#2d2d2d] transition-all hover:text-white" title="Explorador de Archivos">
+                <i class="fa-regular fa-folder-open text-lg"></i>
+            </button>
+            <button id="btn-nav-git" class="w-10 h-10 rounded flex items-center justify-center text-gray-400 transition-all hover:text-white hover:bg-[#252525]" title="Control de Versiones (Git)">
+                <i class="fa-solid fa-code-branch text-lg"></i>
+            </button>
+            <div class="flex-1"></div>
+            <button id="btn-nav-settings" class="w-10 h-10 rounded flex items-center justify-center text-gray-400 transition-all hover:text-white hover:bg-[#252525]" title="Configuración">
+                <i class="fa-solid fa-sliders text-lg"></i>
+            </button>
+        </div>
+
+        <!-- Left Nav Content Panel -->
+        <div id="side-panel" class="w-64 bg-[#1f1f1f] border-r border-[#2d2d2d] flex flex-col flex-shrink-0">
+            
+            <!-- Explorer View -->
+            <div id="panel-explorer" class="flex-1 flex flex-col">
+                <div class="h-10 px-3 flex items-center justify-between border-b border-[#2d2d2d]">
+                    <span class="text-xs font-bold tracking-wider text-gray-400">EXPLORADOR</span>
+                    <div class="flex items-center space-x-2">
+                        <button id="btn-create-file-explorer" class="text-gray-400 hover:text-white" title="Nuevo Archivo (Ctrl+N)">
+                            <i class="fa-solid fa-file-circle-plus text-xs"></i>
+                        </button>
+                        <button id="btn-refresh-files" class="text-gray-400 hover:text-white" title="Refrescar archivos">
+                            <i class="fa-solid fa-rotate-right text-xs"></i>
+                        </button>
+                    </div>
+                </div>
+                <div id="file-tree" class="flex-1 overflow-y-auto p-2 font-mono text-sm space-y-1">
+                    <div class="text-gray-500 text-xs italic p-2 text-center">Cargando árbol de archivos...</div>
+                </div>
+            </div>
+
+            <!-- Git View -->
+            <div id="panel-git" class="flex-1 flex flex-col hidden">
+                <div class="h-10 px-3 flex items-center justify-between border-b border-[#2d2d2d]">
+                    <span class="text-xs font-bold tracking-wider text-gray-400">CONTROL DE VERSIONES</span>
+                    <div class="flex space-x-2">
+                        <button id="btn-git-pull" class="text-gray-400 hover:text-white text-xs" title="Git Pull"><i class="fa-solid fa-arrow-down"></i></button>
+                        <button id="btn-git-push" class="text-gray-400 hover:text-white text-xs" title="Git Push"><i class="fa-solid fa-arrow-up"></i></button>
+                        <button id="btn-git-refresh" class="text-gray-400 hover:text-white text-xs" title="Refrescar"><i class="fa-solid fa-rotate"></i></button>
+                    </div>
+                </div>
+                
+                <div class="flex-1 overflow-y-auto p-3 space-y-4">
+                    <div class="bg-[#252525] p-2.5 rounded border border-[#333333]">
+                        <div class="text-xs text-gray-400">Rama Activa</div>
+                        <div class="flex items-center space-x-1.5 font-mono text-sm text-[#e25c34] font-semibold mt-0.5">
+                            <i class="fa-solid fa-code-fork text-xs"></i>
+                            <span id="git-branch">desconocida</span>
+                        </div>
+                        <div class="flex justify-between items-center text-xs text-gray-500 mt-1.5 pt-1.5 border-t border-[#333333]">
+                            <span>Pendientes Push: <strong id="git-ahead">0</strong></span>
+                            <span>Pendientes Pull: <strong id="git-behind">0</strong></span>
+                        </div>
+                    </div>
+
+                    <div class="space-y-2">
+                        <div class="flex items-center justify-between text-xs font-bold text-gray-400 px-1">
+                            <span>CAMBIOS</span>
+                            <button id="btn-git-stage-all" class="text-xs text-[#e25c34] hover:underline">Preparar Todo</button>
+                        </div>
+                        <div id="git-files-list" class="space-y-1 max-h-60 overflow-y-auto font-mono text-xs">
+                            <div class="text-gray-500 italic p-1">Sin modificaciones detectadas</div>
+                        </div>
+                    </div>
+
+                    <div class="space-y-2 pt-2 border-t border-[#2d2d2d]">
+                        <textarea id="git-commit-message" placeholder="Mensaje de commit..." rows="3" class="w-full bg-[#181818] border border-[#333333] text-sm text-gray-200 rounded p-2 focus:outline-none focus:border-[#e25c34] resize-none"></textarea>
+                        <button id="btn-git-commit" class="w-full py-1.5 bg-[#e25c34] text-white hover:bg-[#d14f29] rounded text-xs font-semibold uppercase tracking-wider transition-colors">
+                            Confirmar Cambios (Commit)
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Center Area (Editor / Tabs / Monaco / Diff & Bottom Terminal) -->
+        <div class="flex-1 flex flex-col min-w-0">
+            
+            <!-- Editor Top Control & Tab Bar -->
+            <div class="h-9 bg-[#181818] border-b border-[#2d2d2d] flex items-center justify-between px-2 flex-shrink-0 z-10 overflow-hidden">
+                <!-- Tab Bar -->
+                <div id="tab-bar" class="flex items-center space-x-1 overflow-x-auto flex-1 h-full select-none no-scrollbar">
+                    <!-- Dynamic Tabs Inserted Here -->
+                </div>
+
+                <!-- Tab & Editor Actions -->
+                <div class="flex items-center space-x-2 pl-2 border-l border-[#2d2d2d] flex-shrink-0 text-xs">
+                    <button id="btn-new-tab" class="px-2 py-1 bg-[#252525] hover:bg-[#333333] text-gray-300 rounded text-[11px] font-medium flex items-center space-x-1 border border-[#333333] transition-colors" title="Nuevo Archivo (Ctrl+N)">
+                        <i class="fa-solid fa-plus text-[10px] text-[#e25c34]"></i>
+                        <span>Nuevo</span>
+                    </button>
+                    <button id="btn-save-tab" class="px-2.5 py-1 bg-[#e25c34] hover:bg-[#d14f29] text-white rounded text-[11px] font-semibold flex items-center space-x-1 transition-colors" title="Guardar Archivo (Ctrl+S)">
+                        <i class="fa-solid fa-floppy-disk text-[10px]"></i>
+                        <span>Guardar</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Editor Container -->
+            <div class="flex-1 flex flex-col relative min-h-0 bg-[#1e1e1e]">
+                
+                <!-- Monaco Default Editor Workspace -->
+                <div id="editor-container" class="w-full h-full"></div>
+
+                <!-- Monaco Diff Editor Workspace -->
+                <div id="diff-editor-container" class="absolute inset-0 bg-[#1e1e1e] flex flex-col hidden z-20">
+                    <div class="h-10 bg-[#252525] px-4 flex items-center justify-between border-b border-[#2d2d2d] flex-shrink-0">
+                        <div class="flex items-center space-x-2 text-xs">
+                            <span class="bg-[#e25c34]/15 text-[#e25c34] px-2 py-0.5 rounded font-semibold border border-[#e25c34]/20">Propuesta de Copiloto</span>
+                            <span class="text-gray-400 font-mono" id="diff-file-label">index.html</span>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <button id="btn-diff-decline" class="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs font-medium flex items-center space-x-1.5 transition-colors">
+                                <i class="fa-solid fa-xmark"></i>
+                                <span>Rechazar Cambios</span>
+                            </button>
+                            <button id="btn-diff-accept" class="px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-xs font-medium flex items-center space-x-1.5 transition-colors">
+                                <i class="fa-solid fa-check"></i>
+                                <span>Aceptar Cambios</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div id="diff-editor-body" class="flex-1 w-full min-h-0"></div>
+                </div>
+            </div>
+
+            <!-- Bottom Console / Integrated Terminal Panel -->
+            <div id="terminal-container" class="h-64 bg-[#141414] border-t border-[#2d2d2d] flex flex-col flex-shrink-0 relative">
+                <div class="h-8 bg-[#181818] border-b border-[#232323] px-3 flex items-center justify-between flex-shrink-0">
+                    <div class="flex items-center space-x-2">
+                        <span class="text-xs font-bold text-gray-400 tracking-wider">TERMINAL INTEGRADA</span>
+                        <span class="text-[10px] bg-green-950 text-green-400 border border-green-800 px-1.5 rounded font-mono">PTY Activo</span>
+                    </div>
+                    <div class="flex items-center space-x-2 text-gray-400">
+                        <button id="btn-term-clear" class="hover:text-white" title="Limpiar Terminal"><i class="fa-solid fa-trash-can text-xs"></i></button>
+                    </div>
+                </div>
+                <div id="terminal-body" class="flex-1 p-1 min-h-0 overflow-hidden">
+                    <!-- Mount target for xterm.js -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Right AI Copilot Chat Panel -->
+        <div class="w-80 bg-[#1a1a1a] border-l border-[#2d2d2d] flex flex-col flex-shrink-0">
+            <!-- Header with Title & Model Selector -->
+            <div class="h-10 px-3 flex items-center justify-between border-b border-[#2d2d2d] flex-shrink-0 bg-[#191919]">
+                <div class="flex items-center space-x-2">
+                    <i class="fa-solid fa-brain text-sm text-[#e25c34]"></i>
+                    <span class="text-xs font-bold tracking-wider text-gray-300">OPENROUTER AI</span>
+                </div>
+                <select id="chat-model-select" class="bg-[#222222] border border-[#333333] text-[10px] text-gray-300 rounded px-1.5 py-1 focus:outline-none focus:border-[#e25c34] max-w-[140px] truncate">
+                    <option value="openrouter/free" selected>Auto Router Gratis</option>
+                    <option value="google/gemini-2.0-flash-lite-preview-02-05:free">Gemini 2.0 Flash Lite (Gratis)</option>
+                    <option value="meta-llama/llama-3.3-70b-instruct:free">Llama 3.3 70B (Gratis)</option>
+                    <option value="deepseek/deepseek-r1:free">DeepSeek R1 (Gratis)</option>
+                    <option value="qwen/qwen-2.5-coder-32b-instruct:free">Qwen 2.5 Coder (Gratis)</option>
+                </select>
+            </div>
+
+            <!-- Active Tab Context Indicator -->
+            <div class="px-3 py-1.5 bg-[#141414] border-b border-[#282828] flex items-center justify-between text-[11px] text-gray-400">
+                <div class="flex items-center space-x-1.5 truncate">
+                    <i class="fa-solid fa-paperclip text-[10px] text-[#e25c34]"></i>
+                    <span id="chat-active-file-label" class="font-mono truncate">Sin archivo activo</span>
+                </div>
+                <label class="flex items-center space-x-1 cursor-pointer text-[10px] text-gray-400 hover:text-gray-200">
+                    <input id="chat-context-checkbox" type="checkbox" checked class="rounded bg-[#222] border-[#333] text-[#e25c34] focus:ring-0 w-3 h-3">
+                    <span>Enviar</span>
+                </label>
+            </div>
+            
+            <!-- Chat Conversation History -->
+            <div id="chat-messages" class="flex-1 overflow-y-auto p-3 space-y-3 text-xs leading-relaxed">
+                <div class="flex space-x-2 items-start">
+                    <div class="w-6 h-6 rounded-full bg-[#e25c34]/20 flex items-center justify-center flex-shrink-0 text-[#e25c34]">
+                        <i class="fa-solid fa-robot text-[11px]"></i>
+                    </div>
+                    <div class="bg-[#242424] p-2.5 rounded-lg border border-[#333333] text-gray-300 max-w-[85%] chat-markdown-body">
+                        Hola, soy tu copiloto de IA conectado a OpenRouter. Puedo analizar tu código activo, refactorizarlo o gestionar tus cambios en Git.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chat Input Area -->
+            <div class="p-3 border-t border-[#2d2d2d] flex-shrink-0 bg-[#161616]">
+                <form id="chat-form" class="flex space-x-2">
+                    <input id="chat-input" type="text" placeholder="Pregúntame algo o solicita código..." class="flex-1 bg-[#222222] border border-[#333333] text-xs text-gray-200 rounded px-2.5 py-2 focus:outline-none focus:border-[#e25c34]" autocomplete="off" />
+                    <button type="submit" class="bg-[#e25c34] hover:bg-[#d14f29] text-white px-3.5 py-2 rounded text-xs transition-all flex items-center justify-center">
+                        <i class="fa-solid fa-paper-plane"></i>
+                    </button>
+                </form>
+            </div>
+        </div>
+    </main>
+
+    <script src="app.js"></script>
+</body>
+</html>
