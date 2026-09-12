@@ -37,11 +37,9 @@ class AVFenixStudioApp(Gtk.Application):
             self.win.set_default_size(1400, 900)
             self.win.set_title("AVFenix Studio IDE (GTK 3)")
 
-            # Create vertical layout box
             box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
             self.win.add(box)
 
-            # WebKit WebView
             self.webview = WebKit.WebView()
             settings = self.webview.get_settings()
             settings.set_enable_developer_extras(True)
@@ -52,7 +50,6 @@ class AVFenixStudioApp(Gtk.Application):
 
             box.pack_start(self.webview, True, True, 0)
 
-            # Locate local HTML assets
             assets_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "assets", "index.html"))
             if not os.path.exists(assets_path):
                 assets_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "index.html"))
@@ -60,7 +57,6 @@ class AVFenixStudioApp(Gtk.Application):
             self.webview.load_uri(f"file://{assets_path}")
             self.win.show_all()
 
-            # Start WebSocket server in a separate background thread
             threading.Thread(target=self.start_websocket_loop, daemon=True).start()
 
     def start_websocket_loop(self):
@@ -81,13 +77,11 @@ class AVFenixStudioApp(Gtk.Application):
         self.websocket_connections.add(websocket)
         try:
             async for message in websocket:
-                # 1. Terminal stream handler
                 if message.startswith("term_data:"):
                     raw_data = message[len("term_data:"):]
                     if self.pty_terminal:
                         await self.pty_terminal.write(raw_data)
 
-                # 2. Terminal resize handler
                 elif message.startswith("term_resize:"):
                     try:
                         cols, rows = map(int, message[len("term_resize:"):].split(","))
@@ -96,7 +90,6 @@ class AVFenixStudioApp(Gtk.Application):
                     except ValueError:
                         pass
 
-                # 3. JSON commands dispatcher
                 else:
                     try:
                         data = json.loads(message)
@@ -149,10 +142,9 @@ class AVFenixStudioApp(Gtk.Application):
                             filepath = data.get("filepath")
                             content = data.get("content")
                             try:
-                                # Ensure directory exists
-                                parent_dir = os.path.dirname(filepath)
-                                if parent_dir and not os.path.exists(parent_dir):
-                                    os.makedirs(parent_dir, exist_ok=True)
+                                dirname = os.path.dirname(filepath)
+                                if dirname and not os.path.exists(dirname):
+                                    os.makedirs(dirname, exist_ok=True)
                                     
                                 with open(filepath, "w", encoding="utf-8") as f:
                                     f.write(content)

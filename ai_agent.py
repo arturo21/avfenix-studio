@@ -6,9 +6,10 @@ from git_manager import GitManager
 
 class AIAgent:
     def __init__(self, api_key=None, base_url="https://openrouter.ai/api/v1", model="openrouter/free"):
+        # Default to a placeholder if API key is not set
         self.api_key = api_key or os.getenv("OPENROUTER_API_KEY")
         self.base_url = base_url
-        self.model = model
+        self.model = "openrouter/free"
         self.client = None
         self.conversation_history = []
         self.git_manager = GitManager()
@@ -16,42 +17,28 @@ class AIAgent:
         self.init_system_prompt()
 
     def setup_client(self):
-        """Initializes the OpenAI client configured for OpenRouter API."""
-        api_key = self.api_key or os.getenv("OPENROUTER_API_KEY")
-        if not api_key:
-            api_key = "dummy-key-for-init"
-            
+        """Initializes the OpenAI client with OpenRouter's base URL and credentials."""
         self.client = OpenAI(
             base_url=self.base_url,
-            api_key=api_key,
-            default_headers={
-                "HTTP-Referer": "https://avfenix-studio.org",
-                "X-Title": "AVFenix Studio IDE"
-            }
+            api_key=self.api_key,
         )
 
-    def set_model(self, model_name):
-        """Allows dynamically updating the AI model."""
-        if model_name:
-            self.model = model_name
-
     def init_system_prompt(self):
-        """Initializes the base system prompt for the AI agent."""
+        """Initializes the system prompt directing the AI agent on its roles and constraints."""
         self.conversation_history = [
             {
                 "role": "system",
                 "content": (
-                    "You are AVFenix Copilot, an advanced AI programming assistant embedded within a Linux IDE.\n"
-                    "Your role is to assist developers with code generation, debugging, refactoring, code explanation, and workspace management.\n"
-                    "When active tab file context is provided, carefully examine the active file content and reference line numbers or sections when giving advice.\n"
-                    "When modifying or deleting files, use tool calls (`write_file` / `delete_file`), which will trigger visual user approval (Monaco Diff Editor / native desktop confirmation dialog).\n"
-                    "Always format code blocks with language identifiers for clean rendering. Be concise, accurate, and professional."
+                    "You are AVFenix Copilot, an advanced AI programming assistant embedded within a GTK-based Linux IDE.\n"
+                    "You can read and propose modifications to the codebase. When modifying files or deleting them, "
+                    "your proposals will be shown to the user visually via a Monaco Diff Editor or a GTK confirmation dialog.\n"
+                    "Be precise, write clean modular code, and explain your changes concisely."
                 )
             }
         ]
 
     def get_tools_definition(self):
-        """Returns function definitions for OpenRouter Tool Calling."""
+        """Returns the function definitions for OpenRouter Tool Calling (Function Calling)."""
         return [
             {
                 "type": "function",
@@ -74,7 +61,7 @@ class AIAgent:
                 "type": "function",
                 "function": {
                     "name": "write_file",
-                    "description": "Proposes a new file or modifications to an existing file. Triggers visual Monaco Diff comparison for user approval before writing.",
+                    "description": "Proposes a new file or modifications to an existing file. This triggers a visual Monaco Diff comparison for user approval before writing.",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -95,7 +82,7 @@ class AIAgent:
                 "type": "function",
                 "function": {
                     "name": "delete_file",
-                    "description": "Proposes file deletion. Triggers a native desktop confirmation dialog.",
+                    "description": "Proposes the deletion of a file. This triggers a native GTK Dialog confirming the action.",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -112,7 +99,7 @@ class AIAgent:
                 "type": "function",
                 "function": {
                     "name": "list_files",
-                    "description": "Lists all directories and files in the project workspace layout.",
+                    "description": "Lists all directories and files in the project workspace to understand its layout.",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -129,7 +116,7 @@ class AIAgent:
                 "type": "function",
                 "function": {
                     "name": "get_git_status",
-                    "description": "Queries current local Git repository status (active branch, staged files, modified/untracked files, and commits ahead/behind).",
+                    "description": "Queries the current local Git repository status (active branch, staged files, modified/untracked files, and commits ahead/behind).",
                     "parameters": {
                         "type": "object",
                         "properties": {}
@@ -139,7 +126,8 @@ class AIAgent:
         ]
 
     async def execute_tool(self, name, args, ws_callback):
-        """Executes the specific tool called by the model."""
+        """Executes the specific tool called by the model. 
+        If it is a write/delete proposal, it routes the proposal through the websocket callback."""
         if name == "read_file":
             filepath = args.get("filepath")
             try:
@@ -151,6 +139,7 @@ class AIAgent:
         elif name == "write_file":
             filepath = args.get("filepath")
             content = args.get("content")
+            # Propose to the user through the WebSocket
             proposal_msg = json.dumps({
                 "action": "write_proposal",
                 "filepath": filepath,
@@ -164,6 +153,7 @@ class AIAgent:
 
         elif name == "delete_file":
             filepath = args.get("filepath")
+            # Propose file deletion through GTK Modal via WebSocket
             proposal_msg = json.dumps({
                 "action": "delete_proposal",
                 "filepath": filepath
@@ -171,7 +161,7 @@ class AIAgent:
             await ws_callback(proposal_msg)
             return {
                 "status": "proposal_sent",
-                "message": f"Deletion of {filepath} was requested. A native confirmation dialog has been triggered for the user."
+                "message": f"Deletion of {filepath} was requested. A native GTK confirmation dialog has been triggered for the user."
             }
 
         elif name == "list_files":
@@ -197,44 +187,33 @@ class AIAgent:
         return {"status": "error", "message": f"Unknown tool: {name}"}
 
     async def chat(self, user_message, ws_callback, model=None, context=None):
-        """Sends user message to OpenRouter API with active tab context and processes tool calling."""
-        api_key = os.getenv("OPENROUTER_API_KEY")
-        if not api_key or api_key == "your-openrouter-key" or api_key == "dummy-key-for-init":
-            return (
-                "⚠️ **Error de API Key**: No se ha detectado una clave válida de OpenRouter.\n\n"
-                "Por favor, exporta tu variable de entorno en la terminal antes de iniciar el IDE:\n"
-                "```bash\nexport OPENROUTER_API_KEY=\"sk-or-v1-tu-clave-aqui\"\n```"
-            )
-
-        target_model = model or self.model
+        """Sends a message to OpenRouter, processes possible function/tool calls, 
+        and updates the local conversation history."""
         
-        # Build prompt payload with active file context if supplied
-        user_content = user_message
-        if context and context.get("filepath") and context.get("content"):
-            filepath = context.get("filepath")
-            content = context.get("content")
-            language = context.get("language", "text")
-            
-            # Truncate content if extremely large to stay within limits
-            max_len = 25000
-            if len(content) > max_len:
-                content = content[:max_len] + "\n...[Contenido del archivo truncado por límite de tamaño]..."
+        # Enforce openrouter/free model
+        active_model = model or self.model or "openrouter/free"
+        if "free" not in active_model:
+            active_model = "openrouter/free"
 
-            user_content = (
-                f"📌 **[CONTEXTO DE LA PESTAÑA ACTIVA]**\n"
-                f"Archivo: `{filepath}` | Lenguaje: `{language}`\n"
-                f"```\n{content}\n```\n\n"
-                f"💬 **Consulta del usuario:** {user_message}"
+        # Format user prompt with active tab context if provided
+        formatted_message = user_message
+        if context and isinstance(context, dict) and context.get("file"):
+            filepath = context.get("file", "desconocido")
+            language = context.get("language", "plaintext")
+            code_content = context.get("content", "")
+            formatted_message = (
+                f"📌 [CONTEXTO DE LA PESTAÑA ACTIVA: {filepath}]\n"
+                f"Lenguaje: `{language}`\n"
+                f"```\n{code_content}\n```\n\n"
+                f"💬 Consulta del usuario: {user_message}"
             )
 
-        self.conversation_history.append({"role": "user", "content": user_content})
+        self.conversation_history.append({"role": "user", "content": formatted_message})
 
         try:
-            # Refresh client with active key if needed
-            self.client.api_key = api_key
-            
+            # Query the AI client
             response = self.client.chat.completions.create(
-                model=target_model,
+                model=active_model,
                 messages=self.conversation_history,
                 tools=self.get_tools_definition(),
                 tool_choice="auto"
@@ -243,14 +222,16 @@ class AIAgent:
             assistant_message = response.choices[0].message
             self.conversation_history.append(assistant_message)
 
-            # Check for tool calling
+            # Check if the assistant wants to call a tool/function
             if assistant_message.tool_calls:
                 for tool_call in assistant_message.tool_calls:
                     name = tool_call.function.name
-                    args = json.loads(tool_call.function.arguments or "{}")
+                    args = json.loads(tool_call.function.argv or tool_call.function.arguments)
                     
+                    # Execute tool asynchronously
                     result = await self.execute_tool(name, args, ws_callback)
                     
+                    # Feed tool execution result back to the model's history
                     self.conversation_history.append({
                         "role": "tool",
                         "tool_call_id": tool_call.id,
@@ -258,8 +239,9 @@ class AIAgent:
                         "content": json.dumps(result)
                     })
 
+                # Call LLM again to formulate the final answer based on the tool's result
                 second_response = self.client.chat.completions.create(
-                    model=target_model,
+                    model=active_model,
                     messages=self.conversation_history
                 )
                 final_content = second_response.choices[0].message.content
@@ -269,11 +251,6 @@ class AIAgent:
             return assistant_message.content
 
         except Exception as e:
-            err_str = str(e)
-            err_msg = f"❌ **Error en la API de OpenRouter (`{target_model}`)**:\n{err_str}"
-            if "AuthenticationError" in err_str or "401" in err_str:
-                err_msg += "\n\n💡 *Verifica que tu OPENROUTER_API_KEY sea válida y tenga crédito.*"
-            elif "429" in err_str:
-                err_msg += "\n\n💡 *Se ha alcanzado el límite de peticiones de la API (Rate Limit).* "
+            err_msg = f"API Error: {str(e)}"
             self.conversation_history.append({"role": "assistant", "content": err_msg})
             return err_msg

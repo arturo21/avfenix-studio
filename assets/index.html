@@ -14,12 +14,13 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.1.0/css/xterm.min.css">
     <script src="https://cdn.jsdelivr.net/npm/xterm@5.1.0/lib/xterm.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.7.0/lib/xterm-addon-fit.min.js"></script>
+    <!-- Marked.js Markdown Parser -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!-- Highlight.js Syntax Highlighting for Markdown Code Blocks -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
     <!-- Monaco Editor AMD Loader -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js"></script>
-    <!-- Marked.js & Highlight.js for Chat Markdown Rendering -->
-    <script src="https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/github-dark.min.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
 </head>
 <body class="h-full flex flex-col overflow-hidden font-sans">
 
@@ -64,7 +65,7 @@
                 <div class="h-10 px-3 flex items-center justify-between border-b border-[#2d2d2d]">
                     <span class="text-xs font-bold tracking-wider text-gray-400">EXPLORADOR</span>
                     <div class="flex items-center space-x-2">
-                        <button id="btn-create-file-explorer" class="text-gray-400 hover:text-white" title="Nuevo Archivo (Ctrl+N)">
+                        <button id="btn-explorer-new-file" class="text-gray-400 hover:text-[#e25c34]" title="Nuevo Archivo (Ctrl+N)">
                             <i class="fa-solid fa-file-circle-plus text-xs"></i>
                         </button>
                         <button id="btn-refresh-files" class="text-gray-400 hover:text-white" title="Refrescar archivos">
@@ -121,36 +122,35 @@
             </div>
         </div>
 
-        <!-- Center Area (Editor / Tabs / Monaco / Diff & Bottom Terminal) -->
+        <!-- Center Area (Editor / Monaco / Diff & Bottom Terminal) -->
         <div class="flex-1 flex flex-col min-w-0">
             
-            <!-- Editor Top Control & Tab Bar -->
-            <div class="h-9 bg-[#181818] border-b border-[#2d2d2d] flex items-center justify-between px-2 flex-shrink-0 z-10 overflow-hidden">
-                <!-- Tab Bar -->
-                <div id="tab-bar" class="flex items-center space-x-1 overflow-x-auto flex-1 h-full select-none no-scrollbar">
-                    <!-- Dynamic Tabs Inserted Here -->
-                </div>
-
-                <!-- Tab & Editor Actions -->
-                <div class="flex items-center space-x-2 pl-2 border-l border-[#2d2d2d] flex-shrink-0 text-xs">
-                    <button id="btn-new-tab" class="px-2 py-1 bg-[#252525] hover:bg-[#333333] text-gray-300 rounded text-[11px] font-medium flex items-center space-x-1 border border-[#333333] transition-colors" title="Nuevo Archivo (Ctrl+N)">
-                        <i class="fa-solid fa-plus text-[10px] text-[#e25c34]"></i>
-                        <span>Nuevo</span>
-                    </button>
-                    <button id="btn-save-tab" class="px-2.5 py-1 bg-[#e25c34] hover:bg-[#d14f29] text-white rounded text-[11px] font-semibold flex items-center space-x-1 transition-colors" title="Guardar Archivo (Ctrl+S)">
-                        <i class="fa-solid fa-floppy-disk text-[10px]"></i>
-                        <span>Guardar</span>
-                    </button>
-                </div>
-            </div>
-
             <!-- Editor Container -->
             <div class="flex-1 flex flex-col relative min-h-0 bg-[#1e1e1e]">
                 
-                <!-- Monaco Default Editor Workspace -->
-                <div id="editor-container" class="w-full h-full"></div>
+                <!-- Editor Tab & Header Controls -->
+                <div id="editor-header-bar" class="h-9 bg-[#181818] border-b border-[#2d2d2d] flex items-center justify-between px-2 flex-shrink-0 select-none z-10">
+                    <!-- Dynamic Tab Bar Container -->
+                    <div id="tab-bar" class="flex items-center space-x-1 overflow-x-auto flex-1 min-w-0 pr-2 no-scrollbar">
+                        <!-- Tabs populated dynamically by app.js -->
+                    </div>
+                    <!-- Editor Quick Actions -->
+                    <div class="flex items-center space-x-2 flex-shrink-0 pl-2 border-l border-[#2d2d2d]">
+                        <button id="btn-new-file" class="px-2.5 py-1 bg-[#252525] hover:bg-[#303030] text-gray-300 hover:text-white rounded text-xs flex items-center space-x-1 transition-colors" title="Nueva Pestaña (Ctrl+N)">
+                            <i class="fa-solid fa-plus text-[11px] text-[#e25c34]"></i>
+                            <span class="text-[11px] font-medium">Nuevo</span>
+                        </button>
+                        <button id="btn-save-file" class="px-3 py-1 bg-[#e25c34] hover:bg-[#d14f29] text-white rounded text-xs flex items-center space-x-1.5 transition-colors font-semibold shadow-sm" title="Guardar Archivo (Ctrl+S)">
+                            <i class="fa-solid fa-floppy-disk text-[11px]"></i>
+                            <span class="text-[11px]">Guardar</span>
+                        </button>
+                    </div>
+                </div>
 
-                <!-- Monaco Diff Editor Workspace -->
+                <!-- Monaco Default Editor Workspace -->
+                <div id="editor-container" class="w-full flex-1 min-h-0"></div>
+
+                <!-- Monaco Diff Editor Workspace (Hidden by default for AI change verification) -->
                 <div id="diff-editor-container" class="absolute inset-0 bg-[#1e1e1e] flex flex-col hidden z-20">
                     <div class="h-10 bg-[#252525] px-4 flex items-center justify-between border-b border-[#2d2d2d] flex-shrink-0">
                         <div class="flex items-center space-x-2 text-xs">
@@ -172,7 +172,7 @@
                 </div>
             </div>
 
-            <!-- Bottom Console / Integrated Terminal Panel -->
+            <!-- Terminal Panel -->
             <div id="terminal-container" class="h-64 bg-[#141414] border-t border-[#2d2d2d] flex flex-col flex-shrink-0 relative">
                 <div class="h-8 bg-[#181818] border-b border-[#232323] px-3 flex items-center justify-between flex-shrink-0">
                     <div class="flex items-center space-x-2">
@@ -183,58 +183,66 @@
                         <button id="btn-term-clear" class="hover:text-white" title="Limpiar Terminal"><i class="fa-solid fa-trash-can text-xs"></i></button>
                     </div>
                 </div>
-                <div id="terminal-body" class="flex-1 p-1 min-h-0 overflow-hidden">
-                    <!-- Mount target for xterm.js -->
-                </div>
+                <div id="terminal-body" class="flex-1 p-1 min-h-0 overflow-hidden"></div>
             </div>
         </div>
 
         <!-- Right AI Copilot Chat Panel -->
         <div class="w-80 bg-[#1a1a1a] border-l border-[#2d2d2d] flex flex-col flex-shrink-0">
-            <!-- Header with Title & Model Selector -->
-            <div class="h-10 px-3 flex items-center justify-between border-b border-[#2d2d2d] flex-shrink-0 bg-[#191919]">
+            <!-- Header with Title -->
+            <div class="h-10 px-3 flex items-center justify-between border-b border-[#2d2d2d] flex-shrink-0 bg-[#181818]">
                 <div class="flex items-center space-x-2">
                     <i class="fa-solid fa-brain text-sm text-[#e25c34]"></i>
-                    <span class="text-xs font-bold tracking-wider text-gray-300">OPENROUTER AI</span>
+                    <span class="text-xs font-bold tracking-wider text-gray-300">AVFENIX AI COPILOT</span>
                 </div>
-                <select id="chat-model-select" class="bg-[#222222] border border-[#333333] text-[10px] text-gray-300 rounded px-1.5 py-1 focus:outline-none focus:border-[#e25c34] max-w-[140px] truncate">
-                    <option value="openrouter/free" selected>Auto Router Gratis</option>
-                    <option value="google/gemini-2.0-flash-lite-preview-02-05:free">Gemini 2.0 Flash Lite (Gratis)</option>
-                    <option value="meta-llama/llama-3.3-70b-instruct:free">Llama 3.3 70B (Gratis)</option>
-                    <option value="deepseek/deepseek-r1:free">DeepSeek R1 (Gratis)</option>
-                    <option value="qwen/qwen-2.5-coder-32b-instruct:free">Qwen 2.5 Coder (Gratis)</option>
+                <span class="text-[10px] bg-green-900/40 text-green-400 px-1.5 py-0.5 rounded border border-green-800/50 font-semibold">
+                    OpenRouter Free
+                </span>
+            </div>
+
+            <!-- Model Selection Bar -->
+            <div class="p-2 border-b border-[#252525] bg-[#161616] flex flex-col space-y-1.5 flex-shrink-0 text-xs">
+                <div class="flex items-center justify-between text-gray-400 text-[11px]">
+                    <label for="chat-model-select" class="font-medium"><i class="fa-solid fa-microchip mr-1"></i>Modelo Gratis:</label>
+                </div>
+                <select id="chat-model-select" class="w-full bg-[#222222] border border-[#333333] text-gray-200 text-xs rounded px-2 py-1 focus:outline-none focus:border-[#e25c34]">
+                    <option value="openrouter/free" selected>🟢 openrouter/free (Auto Router - Gratis)</option>
+                    <option value="google/gemini-2.0-flash-lite-preview-02-05:free">⚡ Gemini 2.0 Flash Lite Free</option>
+                    <option value="meta-llama/llama-3.3-70b-instruct:free">🦙 Llama 3.3 70B Instruct Free</option>
+                    <option value="deepseek/deepseek-r1:free">🧠 DeepSeek R1 Free</option>
+                    <option value="qwen/qwen-2.5-coder-32b-instruct:free">💻 Qwen 2.5 Coder 32B Free</option>
                 </select>
             </div>
 
-            <!-- Active Tab Context Indicator -->
-            <div class="px-3 py-1.5 bg-[#141414] border-b border-[#282828] flex items-center justify-between text-[11px] text-gray-400">
+            <!-- Active Tab Context Status Bar -->
+            <div id="context-status-bar" class="px-3 py-1.5 bg-[#141414] border-b border-[#252525] flex items-center justify-between text-[11px] text-gray-400 flex-shrink-0">
                 <div class="flex items-center space-x-1.5 truncate">
-                    <i class="fa-solid fa-paperclip text-[10px] text-[#e25c34]"></i>
-                    <span id="chat-active-file-label" class="font-mono truncate">Sin archivo activo</span>
+                    <i class="fa-solid fa-file-code text-[#e25c34]"></i>
+                    <span id="active-tab-label" class="font-mono text-gray-300 truncate">Sin archivo activo</span>
                 </div>
-                <label class="flex items-center space-x-1 cursor-pointer text-[10px] text-gray-400 hover:text-gray-200">
-                    <input id="chat-context-checkbox" type="checkbox" checked class="rounded bg-[#222] border-[#333] text-[#e25c34] focus:ring-0 w-3 h-3">
-                    <span>Enviar</span>
+                <label class="flex items-center space-x-1 cursor-pointer select-none text-[10px] text-gray-400 hover:text-gray-200">
+                    <input type="checkbox" id="cb-include-context" checked class="accent-[#e25c34] rounded" />
+                    <span>Contexto</span>
                 </label>
             </div>
             
-            <!-- Chat Conversation History -->
+            <!-- Chat Messages Area -->
             <div id="chat-messages" class="flex-1 overflow-y-auto p-3 space-y-3 text-xs leading-relaxed">
                 <div class="flex space-x-2 items-start">
                     <div class="w-6 h-6 rounded-full bg-[#e25c34]/20 flex items-center justify-center flex-shrink-0 text-[#e25c34]">
                         <i class="fa-solid fa-robot text-[11px]"></i>
                     </div>
-                    <div class="bg-[#242424] p-2.5 rounded-lg border border-[#333333] text-gray-300 max-w-[85%] chat-markdown-body">
-                        Hola, soy tu copiloto de IA conectado a OpenRouter. Puedo analizar tu código activo, refactorizarlo o gestionar tus cambios en Git.
+                    <div class="bg-[#242424] p-2.5 rounded-lg border border-[#333333] text-gray-300 max-w-[85%]">
+                        Hola, soy tu copiloto de IA conectado a los modelos **100% gratuitos** de OpenRouter (`openrouter/free`). Puedo analizar la pestaña activa que estés editando, generar parches de código o ayudarte con tareas de desarrollo.
                     </div>
                 </div>
             </div>
 
-            <!-- Chat Input Area -->
-            <div class="p-3 border-t border-[#2d2d2d] flex-shrink-0 bg-[#161616]">
+            <!-- Chat Input Form -->
+            <div class="p-2.5 border-t border-[#2d2d2d] flex-shrink-0 bg-[#161616]">
                 <form id="chat-form" class="flex space-x-2">
-                    <input id="chat-input" type="text" placeholder="Pregúntame algo o solicita código..." class="flex-1 bg-[#222222] border border-[#333333] text-xs text-gray-200 rounded px-2.5 py-2 focus:outline-none focus:border-[#e25c34]" autocomplete="off" />
-                    <button type="submit" class="bg-[#e25c34] hover:bg-[#d14f29] text-white px-3.5 py-2 rounded text-xs transition-all flex items-center justify-center">
+                    <input id="chat-input" type="text" placeholder="Haz una consulta o pide cambios..." class="flex-1 bg-[#222222] border border-[#333333] text-xs text-gray-200 rounded px-2.5 py-2 focus:outline-none focus:border-[#e25c34]" autocomplete="off" />
+                    <button type="submit" class="bg-[#e25c34] hover:bg-[#d14f29] text-white px-3 py-2 rounded text-xs transition-all flex items-center justify-center">
                         <i class="fa-solid fa-paper-plane"></i>
                     </button>
                 </form>
@@ -242,6 +250,7 @@
         </div>
     </main>
 
+    <!-- App Frontend JavaScript -->
     <script src="app.js"></script>
 </body>
 </html>

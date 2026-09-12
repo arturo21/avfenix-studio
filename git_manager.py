@@ -8,17 +8,15 @@ class GitManager:
         self.initialize_repo()
 
     def initialize_repo(self):
-        """Attempts to load or initialize a git repository from the specified path."""
+        """Attempts to load a git repository from the specified path."""
         try:
             if os.path.isdir(os.path.join(self.repo_path, ".git")):
                 self.repo = git.Repo(self.repo_path)
             else:
-                self.repo = git.Repo.init(self.repo_path)
-            return {"status": "success", "message": "Git repository initialized"}
+                self.repo = None
         except Exception as e:
             print(f"Error loading Git repository: {e}")
             self.repo = None
-            return {"status": "error", "message": str(e)}
 
     def get_status(self):
         """Returns the current status of the Git repository including branches, changes, and commits ahead/behind."""
@@ -30,27 +28,17 @@ class GitManager:
         except TypeError:
             active_branch = "Detached HEAD"
         except Exception:
-            active_branch = "master"
+            active_branch = "Unknown"
 
-        # Get status lists safely handling empty repos (unborn HEAD)
-        try:
-            changed_files = [item.a_path for item in self.repo.index.diff(None)]
-        except Exception:
-            changed_files = []
-
+        # Get status lists
+        changed_files = [item.a_path for item in self.repo.index.diff(None)]
         try:
             staged_files = [item.a_path for item in self.repo.index.diff("HEAD")]
         except Exception:
-            # Unborn HEAD before initial commit
-            try:
-                staged_files = [k[0] if isinstance(k, tuple) else k for k in self.repo.index.entries.keys()]
-            except Exception:
-                staged_files = []
+            # For new repositories without commits yet (unborn HEAD)
+            staged_files = []
 
-        try:
-            untracked_files = self.repo.untracked_files
-        except Exception:
-            untracked_files = []
+        untracked_files = self.repo.untracked_files
 
         # Commits Ahead/Behind if tracking branch is present
         ahead = 0
@@ -58,6 +46,7 @@ class GitManager:
         try:
             tracking_branch = self.repo.active_branch.tracking_branch()
             if tracking_branch:
+                # Compare active branch to tracking branch
                 ahead_commits = list(self.repo.iter_commits(f"{tracking_branch.name}..{active_branch}"))
                 behind_commits = list(self.repo.iter_commits(f"{active_branch}..{tracking_branch.name}"))
                 ahead = len(ahead_commits)
