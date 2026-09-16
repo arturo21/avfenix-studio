@@ -6,13 +6,12 @@ let xterm;
 let xtermFitAddon;
 let fileTreeData = [];
 let gitStatusData = null;
-let expandedFolders = new Set();
 
 // Multi-Tab Document State Manager
 let tabs = [];
 let activeTabId = null;
-let activeFilePath = null;
-let untitledCounter = 0;
+let tabCounter = 1;
+let expandedFolders = new Set();
 
 // Initialize when DOM is ready
 document.addEventListener("DOMContentLoaded", () => {
@@ -22,7 +21,7 @@ document.addEventListener("DOMContentLoaded", () => {
     initMarked();
 });
 
-// Configure Marked.js
+// Configure Marked.js for Markdown Rendering in Chat
 function initMarked() {
     if (window.marked) {
         try {
@@ -50,7 +49,7 @@ function initWebSocket() {
         if (wsStatusIndicator) {
             wsStatusIndicator.innerHTML = `
                 <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-                <span class="text-green-500 font-medium">Conectado</span>
+                <span class="text-green-500">Conectado</span>
             `;
         }
         socket.send(JSON.stringify({ action: "get_files" }));
@@ -63,7 +62,7 @@ function initWebSocket() {
         if (wsStatusIndicator) {
             wsStatusIndicator.innerHTML = `
                 <span class="w-2 h-2 rounded-full bg-red-500"></span>
-                <span class="text-red-500 font-medium">Desconectado</span>
+                <span class="text-red-500">Desconectado</span>
             `;
         }
         setTimeout(initWebSocket, 3000);
@@ -148,24 +147,23 @@ function initWebSocket() {
                     removeChatLoading();
                     addAIMessage(msg.message);
                     break;
-
-                case "error":
-                    showNotification(`Error: ${msg.message}`, "error");
-                    break;
             }
         } catch (e) {
-            console.error("Error dispatching WS message:", e);
+            console.error("Error handling WS message:", e);
         }
     };
 }
 
-// 2. Monaco Editor & Tab Integration
+// 2. Monaco Editor & Diff Setup
 function initMonaco() {
     if (typeof require === 'undefined') return;
     require.config({ paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.39.0/min/vs' } });
     require(['vs/editor/editor.main'], () => {
         monacoEditor = monaco.editor.create(document.getElementById('editor-container'), {
-            value: '',
+            value: [
+                '// Bienvenido a AVFenix Studio IDE',
+                '// Selecciona un archivo del explorador o crea una pestaña nueva para comenzar.'
+            ].join('\n'),
             language: 'javascript',
             theme: 'vs-dark',
             automaticLayout: true,
@@ -181,38 +179,22 @@ function initMonaco() {
             fontSize: 13
         });
 
-        // Initialize active tab model inside Monaco
         if (tabs.length === 0) {
             createNewUntitledTab();
-        } else if (activeTabId) {
-            activateTab(activeTabId);
         }
     });
 }
 
-// Helper: Attach Model Content Change Listener Once
-function attachModelListeners(tab) {
-    if (tab.model && !tab.hasChangeListener) {
-        tab.hasChangeListener = true;
-        tab.model.onDidChangeContent(() => {
-            tab.content = tab.model.getValue();
-            if (!tab.isDirty) {
-                tab.isDirty = true;
-                renderTabs();
-            }
-        });
-    }
-}
-
-// 3. Multi-Tab Document Management
-function createNewUntitledTab(initialContent = "", language = "python") {
-    untitledCounter++;
-    const title = `Sin título - ${untitledCounter}`;
-    const tabId = `tab_${Date.now()}_${untitledCounter}`;
+// 3. Multi-Tab System
+function createNewUntitledTab(initialContent = "") {
+    const title = `Sin título - ${tabCounter++}`;
+    const tabId = `tab_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const language = "javascript";
 
     let model = null;
     if (typeof monaco !== 'undefined' && monaco.editor) {
-        model = monaco.editor.createModel(initialContent, language);
+        model = monaco.editor.createModel(initialContent || "// Escribe tu código aquí...\n", language);
+        attachModelListeners(model, tabId);
     }
 
     const tab = {
@@ -221,50 +203,53 @@ function createNewUntitledTab(initialContent = "", language = "python") {
         title: title,
         content: initialContent,
         isNew: true,
-        isDirty: initialContent ? true : false,
+        isDirty: false,
         language: language,
-        model: model,
-        hasChangeListener: false
+        model: model
     };
 
-    attachModelListeners(tab);
     tabs.push(tab);
-    activateTab(tabId);
+    switchTab(tabId);
 }
 
-function activateTab(tabId) {
+function attachModelListeners(model, tabId) {
+    if (!model || model.hasChangeListener) return;
+    model.hasChangeListener = true;
+    model.onDidChangeContent(() => {
+        const tab = tabs.find(t => t.id === tabId);
+        if (tab) {
+            if (!tab.isDirty) {
+                tab.isDirty = true;
+                renderTabBar();
+            }
+            tab.content = model.getValue();
+        }
+    });
+}
+
+function switchTab(tabId) {
     const tab = tabs.find(t => t.id === tabId);
     if (!tab) return;
 
     activeTabId = tabId;
-    activeFilePath = tab.filepath;
 
-    if (monacoEditor) {
-        if (!tab.model && typeof monaco !== 'undefined' && monaco.editor) {
-            tab.model = monaco.editor.createModel(tab.content || "", tab.language || getFileLanguage(tab.filepath));
-        }
-        if (tab.model) {
-            attachModelListeners(tab);
-            monacoEditor.setModel(tab.model);
-            setTimeout(() => {
-                if (monacoEditor) monacoEditor.layout();
-            }, 20);
-        }
+    if (monacoEditor && tab.model) {
+        monacoEditor.setModel(tab.model);
     }
 
-    updateHeaderActiveLabels(tab.filepath || tab.title);
-    renderTabs();
+    updateHeaderActiveLabels(tab);
+    renderTabBar();
+    renderFileTree();
 }
 
-function closeTab(tabId, skipConfirmation = false) {
+function closeTab(tabId) {
     const idx = tabs.findIndex(t => t.id === tabId);
     if (idx === -1) return;
 
     const tabToClose = tabs[idx];
-    if (tabToClose.isDirty && !skipConfirmation) {
-        if (!confirm(`¿Desea cerrar '${tabToClose.title}' sin guardar los cambios?`)) {
-            return;
-        }
+    if (tabToClose.isDirty) {
+        const confirmClose = confirm(`El archivo '${tabToClose.title}' tiene cambios no guardados. ¿Deseas cerrarlo de todos modos?`);
+        if (!confirmClose) return;
     }
 
     if (tabToClose.model) {
@@ -275,41 +260,36 @@ function closeTab(tabId, skipConfirmation = false) {
 
     if (tabs.length === 0) {
         activeTabId = null;
-        activeFilePath = null;
         createNewUntitledTab();
     } else {
-        if (activeTabId === tabId) {
-            const nextTab = tabs[Math.min(idx, tabs.length - 1)];
-            activateTab(nextTab.id);
-        } else {
-            renderTabs();
-        }
+        const nextTab = tabs[Math.max(0, idx - 1)];
+        switchTab(nextTab.id);
     }
 }
 
-function renderTabs() {
+function closeTabByFilepath(filepath) {
+    const tab = tabs.find(t => t.filepath === filepath);
+    if (tab) closeTab(tab.id);
+}
+
+function renderTabBar() {
     const tabBar = document.getElementById("tab-bar");
     if (!tabBar) return;
 
     tabBar.innerHTML = "";
-
     tabs.forEach(tab => {
         const isActive = tab.id === activeTabId;
-        const activeClass = isActive 
-            ? "bg-[#1e1e1e] text-[#e25c34] font-semibold border-t-2 border-t-[#e25c34]" 
-            : "bg-[#181818] text-gray-400 hover:text-gray-200 hover:bg-[#222222]";
-        
-        const dirtyDot = tab.isDirty ? '<span class="text-[#e25c34] font-bold ml-1">•</span>' : '';
+        const activeClass = isActive ? "bg-[#1e1e1e] text-[#e25c34] font-semibold border-t-2 border-[#e25c34]" : "bg-[#2a2a2a] text-gray-400 hover:bg-[#333333]";
+        const dirtyIndicator = tab.isDirty ? `<span class="text-[#e25c34] font-bold ml-1">•</span>` : "";
 
         const tabElem = document.createElement("div");
-        tabElem.className = `flex items-center space-x-1.5 px-3 py-1 rounded-t text-xs font-mono cursor-pointer border-r border-[#2d2d2d] flex-shrink-0 transition-all ${activeClass}`;
-        tabElem.setAttribute("data-tab-id", tab.id);
-
+        tabElem.className = `editor-tab flex items-center space-x-1.5 px-3 py-1 text-xs rounded-t font-mono cursor-pointer border-r border-[#1a1a1a] flex-shrink-0 transition-colors ${activeClass}`;
+        
         tabElem.innerHTML = `
-            <i class="fa-regular fa-file-code text-[11px] ${isActive ? 'text-[#e25c34]' : 'text-gray-500'}"></i>
-            <span class="truncate max-w-[120px]" title="${escapeAttr(tab.filepath || tab.title)}">${escapeHTML(tab.title)}</span>
-            ${dirtyDot}
-            <button data-action="close-tab" data-tab-id="${tab.id}" class="ml-1 text-gray-500 hover:text-red-400 text-xs rounded p-0.5 focus:outline-none" title="Cerrar (Ctrl+W)">
+            <i class="fa-solid fa-file-code text-[11px] ${isActive ? 'text-[#e25c34]' : 'text-gray-500'}"></i>
+            <span class="truncate max-w-[120px]">${escapeHTML(tab.title)}</span>
+            ${dirtyIndicator}
+            <button data-action="close-tab" data-tab-id="${tab.id}" class="ml-1 text-gray-500 hover:text-white text-xs rounded p-0.5 focus:outline-none" title="Cerrar (Ctrl+W)">
                 <i class="fa-solid fa-xmark"></i>
             </button>
         `;
@@ -319,7 +299,7 @@ function renderTabs() {
                 e.stopPropagation();
                 closeTab(tab.id);
             } else {
-                activateTab(tab.id);
+                switchTab(tab.id);
             }
         });
 
@@ -327,34 +307,26 @@ function renderTabs() {
     });
 }
 
-function updateHeaderActiveLabels(displayName) {
+function updateHeaderActiveLabels(tab) {
     const topLabel = document.getElementById("current-file-label");
-    const activeTabLabel = document.getElementById("active-tab-label");
+    const activeTabLabel = document.getElementById("chat-active-file-label");
 
-    if (topLabel) {
-        topLabel.textContent = displayName || "Sin archivo abierto";
-    }
+    const displayName = tab ? (tab.filepath || tab.title) : "Sin archivo abierto";
 
+    if (topLabel) topLabel.textContent = displayName;
     if (activeTabLabel) {
-        activeTabLabel.textContent = displayName || "Sin archivo activo";
-        activeTabLabel.title = displayName || "Sin archivo activo";
-        if (displayName && !displayName.startsWith("Sin título")) {
-            activeTabLabel.classList.remove("italic", "text-gray-500");
-            activeTabLabel.classList.add("text-gray-200");
-        } else {
-            activeTabLabel.classList.add("italic", "text-gray-500");
-            activeTabLabel.classList.remove("text-gray-200");
-        }
+        activeTabLabel.textContent = displayName;
+        activeTabLabel.title = displayName;
     }
 }
 
-// 4. File Opening & Saving Logic
+// 4. Opening and Saving Files
 function openFile(filepath) {
     if (!filepath) return;
 
     const existingTab = tabs.find(t => t.filepath === filepath);
     if (existingTab) {
-        activateTab(existingTab.id);
+        switchTab(existingTab.id);
         return;
     }
 
@@ -362,44 +334,15 @@ function openFile(filepath) {
 }
 
 function onFileContentLoaded(filepath, content) {
-    const filename = getBasename(filepath);
+    const filename = filepath.split("/").pop();
     const language = getFileLanguage(filepath);
 
-    let existingTab = tabs.find(t => t.filepath === filepath);
-    if (existingTab) {
-        existingTab.content = content;
-        if (existingTab.model) {
-            existingTab.model.setValue(content);
-        }
-        activateTab(existingTab.id);
-        return;
-    }
-
-    // Replace current active tab if it's an unmodified clean "Sin título" tab
-    const activeTab = tabs.find(t => t.id === activeTabId);
-    if (activeTab && activeTab.isNew && !activeTab.isDirty && (!activeTab.model || activeTab.model.getValue().trim() === "")) {
-        activeTab.filepath = filepath;
-        activeTab.title = filename;
-        activeTab.content = content;
-        activeTab.isNew = false;
-        activeTab.isDirty = false;
-        activeTab.language = language;
-
-        if (activeTab.model && window.monaco && monaco.editor) {
-            activeTab.model.setValue(content);
-            monaco.editor.setModelLanguage(activeTab.model, language);
-        }
-        activateTab(activeTab.id);
-        return;
-    }
-
-    // Otherwise create new tab
-    const tabId = `tab_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
     let model = null;
-    if (window.monaco && monaco.editor) {
+    if (typeof monaco !== 'undefined' && monaco.editor) {
         model = monaco.editor.createModel(content, language);
     }
 
+    const tabId = "tab_" + Date.now() + "_" + Math.floor(Math.random() * 1000);
     const newTab = {
         id: tabId,
         filepath: filepath,
@@ -408,82 +351,154 @@ function onFileContentLoaded(filepath, content) {
         isNew: false,
         isDirty: false,
         language: language,
-        model: model,
-        hasChangeListener: false
+        model: model
     };
 
-    attachModelListeners(newTab);
+    if (model) {
+        attachModelListeners(model, tabId);
+    }
+
+    // Replace default untouched blank tab if open
+    const currentTab = tabs.find(t => t.id === activeTabId);
+    if (currentTab && currentTab.isNew && !currentTab.isDirty) {
+        const val = currentTab.model ? currentTab.model.getValue() : "";
+        if (val === "" || val.startsWith("// Bienvenido")) {
+            if (currentTab.model) currentTab.model.dispose();
+            const idx = tabs.findIndex(t => t.id === currentTab.id);
+            if (idx !== -1) tabs.splice(idx, 1);
+        }
+    }
+
     tabs.push(newTab);
-    activateTab(tabId);
+    switchTab(tabId);
 }
 
 function saveActiveFile() {
     const activeTab = tabs.find(t => t.id === activeTabId);
-    if (!activeTab) return;
+    if (!activeTab || !monacoEditor) return;
 
-    let targetPath = activeTab.filepath;
+    let filepath = activeTab.filepath;
 
-    if (activeTab.isNew || !targetPath || targetPath.startsWith("Sin título")) {
-        const defaultPrompt = targetPath && !targetPath.startsWith("Sin título") ? targetPath : "nuevo_archivo.py";
-        const userEnteredPath = prompt("Guardar archivo como (ingrese ruta o nombre de archivo):", defaultPrompt);
-
-        if (!userEnteredPath || !userEnteredPath.trim()) {
-            showNotification("Guardado cancelado.", "info");
-            return;
-        }
-
-        targetPath = userEnteredPath.trim();
-        activeTab.filepath = targetPath;
-        activeTab.title = getBasename(targetPath);
+    if (activeTab.isNew || !filepath) {
+        const userPath = prompt("Ingresa la ruta o nombre para guardar el archivo:", activeTab.title.startsWith("Sin título") ? "nuevo_archivo.py" : activeTab.title);
+        if (!userPath || !userPath.trim()) return;
+        
+        filepath = userPath.trim();
+        activeTab.filepath = filepath;
+        activeTab.title = filepath.split("/").pop();
         activeTab.isNew = false;
-        activeTab.language = getFileLanguage(targetPath);
 
-        if (activeTab.model && window.monaco && monaco.editor) {
-            monaco.editor.setModelLanguage(activeTab.model, activeTab.language);
+        const lang = getFileLanguage(filepath);
+        activeTab.language = lang;
+        if (activeTab.model && monaco.editor) {
+            monaco.editor.setModelLanguage(activeTab.model, lang);
         }
-
-        activeFilePath = targetPath;
-        updateHeaderActiveLabels(targetPath);
     }
 
-    const currentContent = activeTab.model ? activeTab.model.getValue() : activeTab.content;
+    const currentContent = activeTab.model ? activeTab.model.getValue() : monacoEditor.getValue();
     activeTab.content = currentContent;
 
     socket.send(JSON.stringify({
         action: "save_file",
-        filepath: targetPath,
+        filepath: filepath,
         content: currentContent
     }));
 }
 
 function onSaveSuccess(filepath) {
-    const tab = tabs.find(t => t.filepath === filepath || (t.isNew && t.id === activeTabId));
+    const tab = tabs.find(t => t.filepath === filepath);
     if (tab) {
-        tab.filepath = filepath;
-        tab.title = getBasename(filepath);
-        tab.isNew = false;
         tab.isDirty = false;
-        tab.language = getFileLanguage(filepath);
-
-        if (tab.model && window.monaco && monaco.editor) {
-            monaco.editor.setModelLanguage(tab.model, tab.language);
-        }
-
-        renderTabs();
-        updateHeaderActiveLabels(filepath);
+        tab.isNew = false;
+        renderTabBar();
+        updateHeaderActiveLabels(tab);
     }
 
-    showNotification(`Archivo '${filepath}' guardado correctamente.`, "success");
+    showNotification(`Archivo '${filepath}' guardado en disco.`, "success");
     socket.send(JSON.stringify({ action: "get_files" }));
     socket.send(JSON.stringify({ action: "git_status" }));
 }
 
 function onFileDeleted(filepath) {
-    const openTabsToClose = tabs.filter(t => t.filepath === filepath);
-    openTabsToClose.forEach(t => closeTab(t.id, true));
+    const tab = tabs.find(t => t.filepath === filepath);
+    if (tab) closeTab(tab.id);
 }
 
-// 5. Monaco Diff System & AI Proposals
+// 5. File Tree View Generation & Event Delegation
+function renderFileTree() {
+    const container = document.getElementById("file-tree");
+    if (!container) return;
+    container.innerHTML = "";
+
+    if (!fileTreeData || fileTreeData.length === 0) {
+        container.innerHTML = `<div class="text-gray-500 italic text-center text-xs p-2">Sin archivos en el proyecto</div>`;
+        return;
+    }
+
+    const treeRoot = {};
+    fileTreeData.forEach(path => {
+        const parts = path.split("/");
+        let current = treeRoot;
+        parts.forEach((part, idx) => {
+            if (!current[part]) {
+                current[part] = idx === parts.length - 1 ? null : {};
+            }
+            if (current[part] !== null) {
+                current = current[part];
+            }
+        });
+    });
+
+    function generateHTML(node, name, currentPath = "") {
+        const fullPath = currentPath ? `${currentPath}/${name}` : name;
+        const isFolder = node !== null;
+
+        if (isFolder) {
+            const isExpanded = expandedFolders.has(fullPath);
+            return `
+                <div class="tree-node-folder flex flex-col">
+                    <button data-action="toggle-folder" data-path="${escapeAttr(fullPath)}" class="w-full text-left px-2 py-1 rounded text-gray-300 font-bold flex items-center space-x-1.5 focus:outline-none hover:bg-[#2a2a2a] transition-colors">
+                        <i class="fa-solid fa-chevron-down text-[10px] text-gray-500 transition-transform duration-100" style="transform: ${isExpanded ? 'rotate(0deg)' : 'rotate(-90deg)'};"></i>
+                        <i class="fa-solid fa-folder text-amber-500 text-xs"></i>
+                        <span class="truncate text-xs">${escapeHTML(name)}</span>
+                    </button>
+                    <div class="pl-3 flex flex-col space-y-0.5 tree-folder-content ${isExpanded ? '' : 'hidden'}">
+                        ${Object.keys(node).sort((a, b) => {
+                            const aFolder = node[a] !== null;
+                            const bFolder = node[b] !== null;
+                            if (aFolder && !bFolder) return -1;
+                            if (!aFolder && bFolder) return 1;
+                            return a.localeCompare(b);
+                        }).map(child => generateHTML(node[child], child, fullPath)).join('')}
+                    </div>
+                </div>
+            `;
+        } else {
+            const activeTab = tabs.find(t => t.id === activeTabId);
+            const isActive = activeTab && activeTab.filepath === fullPath;
+            const activeClass = isActive ? "bg-[#2d2d2d] text-[#e25c34] font-semibold" : "text-gray-400 hover:bg-[#2a2a2a]";
+
+            return `
+                <button data-action="open-file" data-path="${escapeAttr(fullPath)}" class="tree-node-file w-full text-left px-2 py-0.5 rounded flex items-center space-x-2 focus:outline-none transition-colors ${activeClass}">
+                    <i class="fa-regular fa-file text-[#e25c34] text-xs"></i>
+                    <span class="truncate text-xs">${escapeHTML(name)}</span>
+                </button>
+            `;
+        }
+    }
+
+    const rootKeys = Object.keys(treeRoot).sort((a, b) => {
+        const aFolder = treeRoot[a] !== null;
+        const bFolder = treeRoot[b] !== null;
+        if (aFolder && !bFolder) return -1;
+        if (!aFolder && bFolder) return 1;
+        return a.localeCompare(b);
+    });
+
+    container.innerHTML = rootKeys.map(name => generateHTML(treeRoot[name], name)).join('');
+}
+
+// 6. Monaco Diff System (AI Proposal Review)
 function openDiffProposal(filepath, newContent) {
     const diffContainer = document.getElementById("diff-editor-container");
     const diffLabel = document.getElementById("diff-file-label");
@@ -492,16 +507,16 @@ function openDiffProposal(filepath, newContent) {
     if (diffContainer) diffContainer.classList.remove("hidden");
 
     let originalContent = "";
-    const existingTab = tabs.find(t => t.filepath === filepath);
-    if (existingTab && existingTab.model) {
-        originalContent = existingTab.model.getValue();
-    } else if (monacoEditor && activeFilePath === filepath) {
+    const activeTab = tabs.find(t => t.id === activeTabId);
+    if (activeTab && activeTab.model) {
+        originalContent = activeTab.model.getValue();
+    } else if (monacoEditor) {
         originalContent = monacoEditor.getValue();
     }
 
     let language = getFileLanguage(filepath);
 
-    // Clean up previous models in Monaco Diff Editor to prevent memory leaks / freezes
+    // Dispose old diff models safely
     if (monacoDiffEditor) {
         const oldModels = monacoDiffEditor.getModel();
         if (oldModels) {
@@ -510,25 +525,24 @@ function openDiffProposal(filepath, newContent) {
         }
     }
 
-    let originalModel = null;
-    let modifiedModel = null;
-    if (window.monaco && monaco.editor) {
-        originalModel = monaco.editor.createModel(originalContent, language);
-        modifiedModel = monaco.editor.createModel(newContent, language);
-        
-        if (monacoDiffEditor) {
-            monacoDiffEditor.setModel({ original: originalModel, modified: modifiedModel });
-            monacoDiffEditor.layout();
-        }
+    const originalModel = monaco.editor.createModel(originalContent, language);
+    const modifiedModel = monaco.editor.createModel(newContent, language);
+
+    if (monacoDiffEditor) {
+        monacoDiffEditor.setModel({
+            original: originalModel,
+            modified: modifiedModel
+        });
+        monacoDiffEditor.layout();
     }
 
-    const cleanupDiffOverlay = () => {
+    const cleanupDiff = () => {
         if (diffContainer) diffContainer.classList.add("hidden");
         if (monacoDiffEditor) {
             monacoDiffEditor.setModel(null);
         }
-        if (originalModel) try { originalModel.dispose(); } catch(e) {}
-        if (modifiedModel) try { modifiedModel.dispose(); } catch(e) {}
+        try { originalModel.dispose(); } catch(e) {}
+        try { modifiedModel.dispose(); } catch(e) {}
 
         if (monacoEditor) {
             setTimeout(() => {
@@ -539,18 +553,15 @@ function openDiffProposal(filepath, newContent) {
     };
 
     const btnAccept = document.getElementById("btn-diff-accept");
-    const btnDecline = document.getElementById("btn-diff-decline");
-
     if (btnAccept) {
         btnAccept.onclick = () => {
-            // Save to disk
             socket.send(JSON.stringify({
                 action: "save_file",
                 filepath: filepath,
                 content: newContent
             }));
 
-            // Update tab model and content
+            // Live update active tab or create tab
             let tabToUpdate = tabs.find(t => t.filepath === filepath);
             if (tabToUpdate) {
                 tabToUpdate.content = newContent;
@@ -559,42 +570,41 @@ function openDiffProposal(filepath, newContent) {
                 if (tabToUpdate.model) {
                     tabToUpdate.model.setValue(newContent);
                 }
-                activateTab(tabToUpdate.id);
+                switchTab(tabToUpdate.id);
             } else {
                 const activeTab = tabs.find(t => t.id === activeTabId);
                 if (activeTab && activeTab.isNew && !activeTab.isDirty && (!activeTab.model || activeTab.model.getValue().trim() === "")) {
                     activeTab.filepath = filepath;
-                    activeTab.title = getBasename(filepath);
+                    activeTab.title = filepath.split("/").pop();
                     activeTab.content = newContent;
                     activeTab.isNew = false;
                     activeTab.isDirty = false;
-                    activeTab.language = language;
                     if (activeTab.model) {
                         activeTab.model.setValue(newContent);
-                        monaco.editor.setModelLanguage(activeTab.model, language);
                     }
-                    activateTab(activeTab.id);
+                    switchTab(activeTab.id);
                 } else {
                     onFileContentLoaded(filepath, newContent);
                 }
             }
 
-            cleanupDiffOverlay();
+            cleanupDiff();
             showNotification(`Propuesta del Copiloto aplicada a ${filepath}`, "success");
-            addSystemMessage(`Cambios aceptados y guardados en: ${filepath}`);
+            addSystemMessage(`Cambios aceptados y escritos en: ${filepath}`);
         };
     }
 
+    const btnDecline = document.getElementById("btn-diff-decline");
     if (btnDecline) {
         btnDecline.onclick = () => {
-            cleanupDiffOverlay();
+            cleanupDiff();
             showNotification("Cambios propuestos rechazados.", "info");
             addSystemMessage(`Cambios propuestos para ${filepath} rechazados.`);
         };
     }
 }
 
-// 6. Integrated Xterm.js Terminal
+// 7. Integrated Xterm.js Terminal
 function initXterm() {
     if (xterm) return;
 
@@ -650,85 +660,7 @@ function initXterm() {
     }
 }
 
-// 7. File Tree View Generation with Event Delegation
-function renderFileTree() {
-    const container = document.getElementById("file-tree");
-    if (!container) return;
-    container.innerHTML = "";
-
-    if (fileTreeData.length === 0) {
-        container.innerHTML = `<div class="text-gray-500 italic text-center text-xs p-2">Sin archivos en el proyecto</div>`;
-        return;
-    }
-
-    const treeRoot = {};
-    fileTreeData.forEach(path => {
-        const parts = path.split("/");
-        let current = treeRoot;
-        parts.forEach((part, idx) => {
-            if (!current[part]) {
-                current[part] = idx === parts.length - 1 ? null : {};
-            }
-            current = current[part];
-        });
-    });
-
-    function generateHTML(node, name, currentPath = "") {
-        const fullPath = currentPath ? `${currentPath}/${name}` : name;
-        const isFolder = node !== null;
-
-        if (isFolder) {
-            const isExpanded = expandedFolders.has(fullPath);
-            let html = `
-                <div class="tree-node-folder flex flex-col">
-                    <button data-action="toggle-folder" data-path="${escapeAttr(fullPath)}" class="tree-folder-btn w-full text-left px-2 py-1 rounded text-gray-300 font-bold flex items-center space-x-1.5 focus:outline-none hover:bg-[#2a2a2a] transition-colors">
-                        <i class="fa-solid fa-chevron-down text-[10px] text-gray-500 transition-transform duration-100" style="transform: ${isExpanded ? 'rotate(0deg)' : 'rotate(-90deg)'};"></i>
-                        <i class="fa-solid fa-folder text-amber-500 text-xs"></i>
-                        <span class="truncate text-xs">${escapeHTML(name)}</span>
-                    </button>
-                    <div class="pl-3 flex flex-col space-y-0.5 tree-folder-content ${isExpanded ? '' : 'hidden'}">
-            `;
-            
-            const keys = Object.keys(node).sort((a, b) => {
-                const aFolder = node[a] !== null;
-                const bFolder = node[b] !== null;
-                if (aFolder && !bFolder) return -1;
-                if (!aFolder && bFolder) return 1;
-                return a.localeCompare(b);
-            });
-
-            keys.forEach(childName => {
-                html += generateHTML(node[childName], childName, fullPath);
-            });
-            html += `</div></div>`;
-            return html;
-        } else {
-            const isActive = activeFilePath === fullPath;
-            return `
-                <button data-action="open-file" data-path="${escapeAttr(fullPath)}" class="tree-node-file w-full text-left px-2 py-0.5 rounded flex items-center space-x-2 focus:outline-none transition-colors ${isActive ? 'bg-[#2d2d2d] text-[#e25c34] font-semibold' : 'text-gray-400 hover:bg-[#2a2a2a]'}">
-                    <i class="fa-regular fa-file text-[#e25c34] text-xs"></i>
-                    <span class="truncate text-xs">${escapeHTML(name)}</span>
-                </button>
-            `;
-        }
-    }
-
-    let treeHTML = "";
-    const rootKeys = Object.keys(treeRoot).sort((a, b) => {
-        const aFolder = treeRoot[a] !== null;
-        const bFolder = treeRoot[b] !== null;
-        if (aFolder && !bFolder) return -1;
-        if (!aFolder && bFolder) return 1;
-        return a.localeCompare(b);
-    });
-
-    rootKeys.forEach(name => {
-        treeHTML += generateHTML(treeRoot[name], name);
-    });
-    container.innerHTML = treeHTML;
-}
-
-// 8. Git Integration Panel View
+// 8. Git Integration Panel
 function renderGitStatus() {
     const branchLabel = document.getElementById("git-branch");
     const aheadLabel = document.getElementById("git-ahead");
@@ -738,10 +670,10 @@ function renderGitStatus() {
     if (!filesList) return;
 
     if (!gitStatusData || !gitStatusData.is_repo) {
-        if (branchLabel) branchLabel.textContent = "No es un repositorio de Git";
+        if (branchLabel) branchLabel.textContent = "No es repositorio Git";
         if (aheadLabel) aheadLabel.textContent = "0";
         if (behindLabel) behindLabel.textContent = "0";
-        filesList.innerHTML = `<div class="text-gray-500 italic p-1">No hay inicializado ningún repositorio Git</div>`;
+        filesList.innerHTML = `<div class="text-gray-500 italic p-1">Sin repositorio Git</div>`;
         return;
     }
 
@@ -750,18 +682,18 @@ function renderGitStatus() {
     if (behindLabel) behindLabel.textContent = gitStatusData.behind;
     filesList.innerHTML = "";
 
-    const hasModified = gitStatusData.modified.length > 0;
-    const hasStaged = gitStatusData.staged.length > 0;
-    const hasUntracked = gitStatusData.untracked.length > 0;
+    const hasModified = gitStatusData.modified && gitStatusData.modified.length > 0;
+    const hasStaged = gitStatusData.staged && gitStatusData.staged.length > 0;
+    const hasUntracked = gitStatusData.untracked && gitStatusData.untracked.length > 0;
 
     if (!hasModified && !hasStaged && !hasUntracked) {
-        filesList.innerHTML = `<div class="text-gray-500 italic p-1">Sin modificaciones pendientes</div>`;
+        filesList.innerHTML = `<div class="text-gray-500 italic p-1">Sin cambios pendientes</div>`;
         return;
     }
 
-    gitStatusData.modified.forEach(file => filesList.appendChild(createGitFileRow(file, "modified")));
-    gitStatusData.staged.forEach(file => filesList.appendChild(createGitFileRow(file, "staged")));
-    gitStatusData.untracked.forEach(file => filesList.appendChild(createGitFileRow(file, "untracked")));
+    if (gitStatusData.modified) gitStatusData.modified.forEach(file => filesList.appendChild(createGitFileRow(file, "modified")));
+    if (gitStatusData.staged) gitStatusData.staged.forEach(file => filesList.appendChild(createGitFileRow(file, "staged")));
+    if (gitStatusData.untracked) gitStatusData.untracked.forEach(file => filesList.appendChild(createGitFileRow(file, "untracked")));
 }
 
 function createGitFileRow(filepath, status) {
@@ -794,9 +726,9 @@ function stageFile(filepath) {
     socket.send(JSON.stringify({ action: "git_stage", filepath: filepath }));
 }
 
-// 9. UI Navigation & Keyboard Shortcuts Controls
+// 9. Navigation & UI Controls (Delegated Events)
 function initUIControls() {
-    // Delegated File Tree Click Listener
+    // Explorer Event Delegation
     const fileTreeContainer = document.getElementById("file-tree");
     if (fileTreeContainer) {
         fileTreeContainer.addEventListener("click", (e) => {
@@ -823,16 +755,16 @@ function initUIControls() {
         });
     }
 
-    // New Tab & Save Buttons
+    // Action Buttons
     const btnNewFile = document.getElementById("btn-new-file");
-    const btnCreateNewFile = document.getElementById("btn-create-new-file");
-    const btnSaveFile = document.getElementById("btn-save-file");
-
     if (btnNewFile) btnNewFile.addEventListener("click", () => createNewUntitledTab());
-    if (btnCreateNewFile) btnCreateNewFile.addEventListener("click", () => createNewUntitledTab());
-    if (btnSaveFile) btnSaveFile.addEventListener("click", () => saveActiveFile());
 
-    // Navigation Switch Buttons
+    const btnNewFileExp = document.getElementById("btn-create-new-file");
+    if (btnNewFileExp) btnNewFileExp.addEventListener("click", () => createNewUntitledTab());
+
+    const btnSaveFile = document.getElementById("btn-save-file");
+    if (btnSaveFile) btnSaveFile.addEventListener("click", saveActiveFile);
+
     const explorerBtn = document.getElementById("btn-nav-explorer");
     const gitBtn = document.getElementById("btn-nav-git");
     const explorerPanel = document.getElementById("panel-explorer");
@@ -856,7 +788,6 @@ function initUIControls() {
         });
     }
 
-    // Git Sync Commands
     if (document.getElementById("btn-git-stage-all")) {
         document.getElementById("btn-git-stage-all").addEventListener("click", () => {
             socket.send(JSON.stringify({ action: "git_stage_all" }));
@@ -920,7 +851,7 @@ function initUIControls() {
         }
     });
 
-    // Chat Form Submit
+    // Chat form submit
     const chatForm = document.getElementById("chat-form");
     if (chatForm) {
         chatForm.addEventListener("submit", (e) => {
@@ -941,7 +872,7 @@ function initUIControls() {
                     file: activeTab.filepath || activeTab.title,
                     filepath: activeTab.filepath || activeTab.title,
                     content: currentContent,
-                    language: activeTab.language || getFileLanguage(activeTab.filepath || activeTab.title)
+                    language: activeTab.language || getFileLanguage(activeTab.filepath)
                 };
             }
 
@@ -959,44 +890,7 @@ function initUIControls() {
     }
 }
 
-// 10. Chat UI Messages Helpers with Safe Clipboard Copy
-function copyAIMessageText(buttonEl, text) {
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(text).then(() => {
-            showCopySuccess(buttonEl);
-        }).catch(() => {
-            fallbackCopyText(buttonEl, text);
-        });
-    } else {
-        fallbackCopyText(buttonEl, text);
-    }
-}
-
-function fallbackCopyText(buttonEl, text) {
-    const textArea = document.createElement("textarea");
-    textArea.value = text;
-    textArea.style.position = "fixed";
-    textArea.style.left = "-9999px";
-    document.body.appendChild(textArea);
-    textArea.select();
-    try {
-        document.execCommand("copy");
-        showCopySuccess(buttonEl);
-    } catch (err) {
-        showNotification("Error al copiar al portapapeles", "error");
-    }
-    document.body.removeChild(textArea);
-}
-
-function showCopySuccess(buttonEl) {
-    if (!buttonEl) return;
-    const originalHTML = buttonEl.innerHTML;
-    buttonEl.innerHTML = `<i class="fa-solid fa-check text-green-400 mr-1"></i><span class="text-green-400">¡Copiado!</span>`;
-    setTimeout(() => {
-        buttonEl.innerHTML = originalHTML;
-    }, 2000);
-}
-
+// 10. Chat UI Messages & Utilities
 function addUserMessage(text, contextFile) {
     const container = document.getElementById("chat-messages");
     if (!container) return;
@@ -1027,11 +921,12 @@ function addAIMessage(text) {
     const container = document.getElementById("chat-messages");
     if (!container) return;
 
+    const msgId = "ai_msg_" + Date.now();
     const div = document.createElement("div");
     div.className = "flex space-x-2 items-start my-1";
     
     let parsedHTML = escapeHTML(text);
-    if (window.marked) {
+    if (typeof marked !== 'undefined') {
         try {
             parsedHTML = marked.parse(text);
         } catch (e) {
@@ -1043,25 +938,19 @@ function addAIMessage(text) {
         <div class="w-6 h-6 rounded-full bg-[#e25c34]/20 flex items-center justify-center flex-shrink-0 text-[#e25c34] border border-[#e25c34]/30 mt-0.5">
             <i class="fa-solid fa-robot text-[11px]"></i>
         </div>
-        <div class="bg-[#242424] p-2.5 rounded-lg border border-[#333333] text-gray-200 max-w-[88%] text-xs chat-markdown-body overflow-x-auto shadow flex flex-col">
-            <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-[#333333] text-[10px] text-gray-400">
-                <span class="font-medium text-[#e25c34]"><i class="fa-solid fa-brain mr-1"></i>Respuesta Copiloto</span>
-                <button class="copy-ai-btn hover:text-white transition-colors cursor-pointer px-1.5 py-0.5 rounded bg-[#1a1a1a] border border-[#333333] flex items-center space-x-1" title="Copiar mensaje">
+        <div class="bg-[#242424] rounded-lg border border-[#333333] text-gray-200 max-w-[85%] text-xs shadow overflow-hidden flex flex-col">
+            <div class="bg-[#1c1c1c] px-2.5 py-1 border-b border-[#333333] flex items-center justify-between text-[10px] text-gray-400">
+                <span class="font-mono">AVFenix Copilot</span>
+                <button class="hover:text-white flex items-center space-x-1 cursor-pointer transition-colors px-1 py-0.5 rounded bg-[#282828] hover:bg-[#333333]" title="Copiar mensaje" onclick="copyAIMessageText('${msgId}', this)">
                     <i class="fa-regular fa-copy text-[10px]"></i>
                     <span>Copiar</span>
                 </button>
             </div>
-            <div>
+            <div id="${msgId}" class="p-2.5 chat-markdown-body overflow-x-auto">
                 ${parsedHTML}
             </div>
         </div>
     `;
-    
-    const copyBtn = div.querySelector('.copy-ai-btn');
-    if (copyBtn) {
-        copyBtn.addEventListener('click', () => copyAIMessageText(copyBtn, text));
-    }
-
     container.appendChild(div);
 
     if (typeof hljs !== 'undefined') {
@@ -1071,6 +960,52 @@ function addAIMessage(text) {
     }
 
     container.scrollTop = container.scrollHeight;
+}
+
+function copyAIMessageText(elementId, btnElement) {
+    const msgElement = document.getElementById(elementId);
+    if (!msgElement) return;
+
+    const textToCopy = msgElement.innerText || msgElement.textContent;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(textToCopy).then(() => {
+            showCopyConfirmation(btnElement);
+        }).catch(err => {
+            console.error("Clipboard write error:", err);
+            fallbackCopyText(textToCopy, btnElement);
+        });
+    } else {
+        fallbackCopyText(textToCopy, btnElement);
+    }
+}
+
+function fallbackCopyText(text, btnElement) {
+    const textArea = document.createElement("textarea");
+    textArea.value = text;
+    textArea.style.position = "fixed";
+    textArea.style.left = "-999999px";
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    try {
+        document.execCommand('copy');
+        showCopyConfirmation(btnElement);
+    } catch (err) {
+        console.error('Fallback copy failed:', err);
+        showNotification("No se pudo copiar el texto", "error");
+    }
+    document.body.removeChild(textArea);
+}
+
+function showCopyConfirmation(btnElement) {
+    if (btnElement) {
+        const originalHTML = btnElement.innerHTML;
+        btnElement.innerHTML = `<i class="fa-solid fa-check text-green-400 text-[10px]"></i><span class="text-green-400 font-semibold">¡Copiado!</span>`;
+        setTimeout(() => {
+            btnElement.innerHTML = originalHTML;
+        }, 2000);
+    }
+    showNotification("Texto copiado al portapapeles", "success");
 }
 
 function addSystemMessage(text) {
@@ -1137,11 +1072,6 @@ function getFileLanguage(filepath) {
     if (filepath.endsWith('.c') || filepath.endsWith('.h')) return 'c';
     if (filepath.endsWith('.cpp')) return 'cpp';
     return 'text';
-}
-
-function getBasename(path) {
-    if (!path) return "Sin título";
-    return path.split('/').pop();
 }
 
 function escapeHTML(str) {
