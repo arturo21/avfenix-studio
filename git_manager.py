@@ -19,7 +19,7 @@ class GitManager:
             self.repo = None
 
     def get_status(self):
-        """Returns the current status of the Git repository including branches, changes, and commits ahead/behind."""
+        """Returns current status handling clean and empty repositories safely."""
         if not self.repo:
             return {"is_repo": False, "error": "No git repository found"}
 
@@ -30,29 +30,26 @@ class GitManager:
         except Exception:
             active_branch = "Unknown"
 
-        # Get status lists
         changed_files = [item.a_path for item in self.repo.index.diff(None)]
         try:
             staged_files = [item.a_path for item in self.repo.index.diff("HEAD")]
         except Exception:
-            # For new repositories without commits yet (unborn HEAD)
+            # Handle unborn HEAD on newly initialized empty repositories
             staged_files = []
 
         untracked_files = self.repo.untracked_files
 
-        # Commits Ahead/Behind if tracking branch is present
         ahead = 0
         behind = 0
         try:
             tracking_branch = self.repo.active_branch.tracking_branch()
             if tracking_branch:
-                # Compare active branch to tracking branch
                 ahead_commits = list(self.repo.iter_commits(f"{tracking_branch.name}..{active_branch}"))
                 behind_commits = list(self.repo.iter_commits(f"{active_branch}..{tracking_branch.name}"))
                 ahead = len(ahead_commits)
                 behind = len(behind_commits)
         except Exception:
-            pass # No remote tracking branch or detached HEAD
+            pass
 
         return {
             "is_repo": True,
@@ -65,7 +62,7 @@ class GitManager:
         }
 
     def stage_file(self, file_path):
-        """Stages a specific file or files (equivalent to 'git add <file>')."""
+        """Stages a specific file."""
         if not self.repo:
             raise Exception("No active Git repository")
         try:
@@ -75,7 +72,7 @@ class GitManager:
             return {"status": "error", "message": str(e)}
 
     def stage_all(self):
-        """Stages all local changes (equivalent to 'git add .')."""
+        """Stages all local changes."""
         if not self.repo:
             raise Exception("No active Git repository")
         try:
@@ -95,7 +92,7 @@ class GitManager:
             return {"status": "error", "message": str(e)}
 
     def push(self):
-        """Pushes local commits to the remote repository (GitHub)."""
+        """Pushes local commits to the remote repository."""
         if not self.repo:
             raise Exception("No active Git repository")
         try:
@@ -107,7 +104,7 @@ class GitManager:
             return {"status": "error", "message": f"Push failed: {str(e)}"}
 
     def pull(self):
-        """Pulls changes from the remote repository (GitHub) and merges them."""
+        """Pulls changes from the remote repository."""
         if not self.repo:
             raise Exception("No active Git repository")
         try:

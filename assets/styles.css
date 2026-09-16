@@ -1,94 +1,317 @@
-/* Custom styling overrides for AVFenix Studio GTK App Window */
-
-/* Custom scrollbars for a clean workspace look */
-::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
-}
-::-webkit-scrollbar-track {
-    background: #181818;
-}
-::-webkit-scrollbar-thumb {
-    background: #333333;
-    border-radius: 3px;
-}
-::-webkit-scrollbar-thumb:hover {
-    background: #e25c34;
+/* ===== RESET & BASE ===== */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
 }
 
-/* Adjust layout positions of Monaco Editor to take full width/height */
-#editor-container {
+body {
+    font-family: 'Roboto', sans-serif;
+    color: #333;
+    line-height: 1.6;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 20px;
+}
+
+a {
+    text-decoration: none;
+    color: inherit;
+}
+
+ul {
+    list-style: none;
+}
+
+/* ===== TOPBAR ===== */
+.topbar {
+    background-color: #1a1a2e;
+    color: #fff;
+    padding: 10px 0;
+    font-size: 0.9rem;
+}
+
+.topbar .container {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.topbar .logo {
+    font-weight: 700;
+    font-size: 1.2rem;
+    color: #e94560;
+}
+
+.topbar .nav-links {
+    display: flex;
+    gap: 25px;
+}
+
+.topbar .nav-links li a {
+    color: #ccc;
+    transition: color 0.3s;
+}
+
+.topbar .nav-links li a:hover {
+    color: #e94560;
+}
+
+/* ===== HEADER ===== */
+.header {
+    background-color: #fff;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    padding: 15px 0;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.header .container {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.header .logo-img {
+    height: 50px;
+    width: auto;
+}
+
+.main-nav ul {
+    display: flex;
+    gap: 30px;
+}
+
+.main-nav ul li a {
+    color: #333;
+    font-weight: 500;
+    transition: color 0.3s;
+}
+
+.main-nav ul li a:hover {
+    color: #e94560;
+}
+
+/* ===== SLIDESHOW ===== */
+.slideshow {
+    width: 100%;
+    position: relative;
+    overflow: hidden;
+    height: 500px;
+}
+
+.slideshow .container {
+    display: flex;
+    width: 300%;
+    height: 100%;
+    animation: slideShow 12s infinite;
+}
+
+.slide {
+    width: 100%;
+    position: relative;
+}
+
+.slide img {
     width: 100%;
     height: 100%;
-    overflow: hidden;
+    object-fit: cover;
 }
 
-/* Ensure Monaco Diff Editor fills its space properly */
-#diff-editor-body {
-    width: 100%;
-    height: 100%;
-    overflow: hidden;
+.slide .caption {
+    position: absolute;
+    bottom: 50px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.6);
+    color: #fff;
+    padding: 15px 40px;
+    border-radius: 8px;
+    font-size: 1.5rem;
+    font-weight: 700;
+    text-align: center;
 }
 
-/* Xterm.js customized dark background */
-.xterm {
-    padding: 8px;
-    height: 100%;
-}
-.xterm-viewport {
-    background-color: #141414 !important;
+@keyframes slideShow {
+    0%, 30% { transform: translateX(0); }
+    33%, 60% { transform: translateX(-100%); }
+    63%, 90% { transform: translateX(-200%); }
+    93%, 100% { transform: translateX(0); }
 }
 
-/* Tree view styling */
-.tree-node-file, .tree-node-folder {
-    transition: background-color 0.15s ease;
-}
-.tree-node-file:hover, .tree-node-folder:hover {
-    background-color: #2b2b2b;
+/* ===== SERVICES ===== */
+.services {
+    padding: 80px 0;
+    background-color: #f8f9fa;
 }
 
-/* Active chat bubble animations */
-.chat-loading-dots span {
-    animation: blink 1.4s infinite both;
-    width: 6px;
-    height: 6px;
-    background-color: #e25c34;
-    display: inline-block;
-    border-radius: 50%;
-    margin: 0 1px;
-}
-.chat-loading-dots span:nth-child(2) {
-    animation-delay: .2s;
-}
-.chat-loading-dots span:nth-child(3) {
-    animation-delay: .4s;
+.section-title {
+    text-align: center;
+    font-size: 2rem;
+    margin-bottom: 50px;
+    color: #1a1a2e;
+    position: relative;
 }
 
-@keyframes blink {
-    0% { opacity: .2; }
-    20% { opacity: 1; }
-    100% { opacity: .2; }
-}
-
-/* Visual highlights for staged and unstaged changes in the Git panel */
-.git-file-status-badge {
-    font-size: 9px;
-    font-weight: 800;
-    padding: 1px 4px;
+.section-title::after {
+    content: '';
+    display: block;
+    width: 60px;
+    height: 4px;
+    background: #e94560;
+    margin: 10px auto 0;
     border-radius: 2px;
 }
-.git-badge-modified {
-    background-color: rgba(226, 92, 52, 0.15);
-    color: #e25c34;
-    border: 1px solid rgba(226, 92, 52, 0.3);
+
+.services-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 30px;
 }
-.git-badge-staged {
-    background-color: rgba(34, 197, 94, 0.15);
-    color: #22c55e;
-    border: 1px solid rgba(34, 197, 94, 0.3);
+
+.service-card {
+    background: #fff;
+    padding: 40px 30px;
+    border-radius: 12px;
+    text-align: center;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+    transition: transform 0.3s, box-shadow 0.3s;
 }
-.git-badge-untracked {
-    background-color: rgba(156, 163, 175, 0.15);
-    color: #9ca3af;
-    border: 1px solid rgba(156, 163, 175, 0.3);
+
+.service-card:hover {
+    transform: translateY(-8px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.12);
+}
+
+.service-card h3 {
+    font-size: 1.4rem;
+    margin-bottom: 15px;
+    color: #1a1a2e;
+}
+
+.service-card p {
+    color: #666;
+    font-size: 0.95rem;
+}
+
+/* ===== COMPANY INFO ===== */
+.company-info {
+    padding: 80px 0;
+    background-color: #fff;
+}
+
+.company-info .container {
+    text-align: center;
+}
+
+.company-info p {
+    max-width: 800px;
+    margin: 0 auto;
+    font-size: 1.1rem;
+    color: #555;
+    line-height: 1.8;
+}
+
+/* ===== FOOTER ===== */
+.footer {
+    background-color: #1a1a2e;
+    color: #fff;
+    padding: 50px 0 0;
+}
+
+.footer-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding-bottom: 40px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.footer-menu h4,
+.social-links h4 {
+    margin-bottom: 15px;
+    font-size: 1.1rem;
+    color: #e94560;
+}
+
+.footer-menu ul li {
+    margin-bottom: 8px;
+}
+
+.footer-menu ul li a {
+    color: #aaa;
+    transition: color 0.3s;
+}
+
+.footer-menu ul li a:hover {
+    color: #fff;
+}
+
+.social-icons {
+    display: flex;
+    gap: 15px;
+}
+
+.social-icons a {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 50%;
+    transition: background 0.3s;
+}
+
+.social-icons a:hover {
+    background: #e94560;
+}
+
+.footer-bottom {
+    text-align: center;
+    padding: 20px 0;
+    color: #777;
+    font-size: 0.85rem;
+}
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 768px) {
+    .topbar .container {
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .header .container {
+        flex-direction: column;
+        gap: 15px;
+    }
+
+    .main-nav ul {
+        gap: 15px;
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+
+    .services-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .footer-top {
+        flex-direction: column;
+        gap: 30px;
+    }
+
+    .slide .caption {
+        font-size: 1rem;
+        bottom: 20px;
+        padding: 10px 20px;
+    }
+
+    .slideshow {
+        height: 300px;
+    }
 }

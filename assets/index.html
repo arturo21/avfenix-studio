@@ -6,29 +6,32 @@
     <title>AVFenix Studio</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- FontAwesome Icons -->
+    <!-- FontAwesome Icons CDN -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- Custom CSS styles -->
+    <!-- Custom Styles Override -->
     <link rel="stylesheet" href="styles.css">
+    
+    <!-- Marked.js Markdown Parser CDN (Loaded BEFORE Monaco AMD Loader) -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!-- Highlight.js Syntax Highlighting CDN -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+    
     <!-- Xterm.js Terminal CDN -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.1.0/css/xterm.min.css">
     <script src="https://cdn.jsdelivr.net/npm/xterm@5.1.0/lib/xterm.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.7.0/lib/xterm-addon-fit.min.js"></script>
-    <!-- Marked.js Markdown Parser -->
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <!-- Highlight.js Syntax Highlighting for Markdown Code Blocks -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github-dark.min.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
-    <!-- Monaco Editor AMD Loader -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js"></script>
+    
+    <!-- Monaco Editor AMD Loader (vs/loader.js) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.39.0/min/vs/loader.js"></script>
 </head>
 <body class="h-full flex flex-col overflow-hidden font-sans">
 
-    <!-- Top Activity Bar -->
+    <!-- Top Activity Header Bar -->
     <header class="h-10 bg-[#181818] border-b border-[#2d2d2d] flex items-center justify-between px-4 flex-shrink-0 z-10">
         <div class="flex items-center space-x-2">
             <span class="text-[#e25c34] font-bold tracking-wider text-sm"><i class="fa-solid fa-fire-alt mr-1.5"></i>AVFENIX STUDIO</span>
-            <span class="text-xs bg-[#2b2b2b] px-2 py-0.5 rounded text-gray-400">GTK 3 & WebKit Core</span>
+            <span class="text-[10px] bg-[#2b2b2b] px-2 py-0.5 rounded text-gray-400 font-mono">GTK 3 & WebKit Core</span>
         </div>
         <div class="flex items-center space-x-3 text-xs">
             <span id="ws-status" class="flex items-center space-x-1.5 text-red-500 font-medium">
@@ -40,10 +43,10 @@
         </div>
     </header>
 
-    <!-- Main Workspace Container -->
+    <!-- Main Workspace Area -->
     <main class="flex-1 flex overflow-hidden relative">
         
-        <!-- Left Sidebar Toolbar -->
+        <!-- Left Sidebar Toolbar (Icon Navigation) -->
         <div class="w-12 bg-[#181818] border-r border-[#2d2d2d] flex flex-col items-center py-2 space-y-4 flex-shrink-0">
             <button id="btn-nav-explorer" class="w-10 h-10 rounded flex items-center justify-center text-[#e25c34] bg-[#2d2d2d] transition-all hover:text-white" title="Explorador de Archivos">
                 <i class="fa-regular fa-folder-open text-lg"></i>
@@ -57,7 +60,7 @@
             </button>
         </div>
 
-        <!-- Left Nav Content Panel -->
+        <!-- Left Nav Content Panel (Explorer / Git) -->
         <div id="side-panel" class="w-64 bg-[#1f1f1f] border-r border-[#2d2d2d] flex flex-col flex-shrink-0">
             
             <!-- Explorer View -->
@@ -65,16 +68,16 @@
                 <div class="h-10 px-3 flex items-center justify-between border-b border-[#2d2d2d]">
                     <span class="text-xs font-bold tracking-wider text-gray-400">EXPLORADOR</span>
                     <div class="flex items-center space-x-2">
-                        <button id="btn-explorer-new-file" class="text-gray-400 hover:text-[#e25c34]" title="Nuevo Archivo (Ctrl+N)">
+                        <button id="btn-new-file-explorer" class="text-gray-400 hover:text-[#e25c34] transition-colors" title="Nuevo Archivo (Ctrl+N)">
                             <i class="fa-solid fa-file-circle-plus text-xs"></i>
                         </button>
-                        <button id="btn-refresh-files" class="text-gray-400 hover:text-white" title="Refrescar archivos">
+                        <button id="btn-refresh-files" class="text-gray-400 hover:text-white transition-colors" title="Refrescar Lista de Archivos">
                             <i class="fa-solid fa-rotate-right text-xs"></i>
                         </button>
                     </div>
                 </div>
-                <div id="file-tree" class="flex-1 overflow-y-auto p-2 font-mono text-sm space-y-1">
-                    <div class="text-gray-500 text-xs italic p-2 text-center">Cargando árbol de archivos...</div>
+                <div id="file-tree" class="flex-1 overflow-y-auto p-2 font-mono text-xs space-y-1">
+                    <div class="text-gray-500 italic text-xs p-2 text-center">Cargando archivos del proyecto...</div>
                 </div>
             </div>
 
@@ -85,11 +88,12 @@
                     <div class="flex space-x-2">
                         <button id="btn-git-pull" class="text-gray-400 hover:text-white text-xs" title="Git Pull"><i class="fa-solid fa-arrow-down"></i></button>
                         <button id="btn-git-push" class="text-gray-400 hover:text-white text-xs" title="Git Push"><i class="fa-solid fa-arrow-up"></i></button>
-                        <button id="btn-git-refresh" class="text-gray-400 hover:text-white text-xs" title="Refrescar"><i class="fa-solid fa-rotate"></i></button>
+                        <button id="btn-git-refresh" class="text-gray-400 hover:text-white text-xs" title="Refrescar Estado"><i class="fa-solid fa-rotate"></i></button>
                     </div>
                 </div>
                 
                 <div class="flex-1 overflow-y-auto p-3 space-y-4">
+                    <!-- Branch & Sync Status -->
                     <div class="bg-[#252525] p-2.5 rounded border border-[#333333]">
                         <div class="text-xs text-gray-400">Rama Activa</div>
                         <div class="flex items-center space-x-1.5 font-mono text-sm text-[#e25c34] font-semibold mt-0.5">
@@ -102,6 +106,7 @@
                         </div>
                     </div>
 
+                    <!-- Git File Status List -->
                     <div class="space-y-2">
                         <div class="flex items-center justify-between text-xs font-bold text-gray-400 px-1">
                             <span>CAMBIOS</span>
@@ -112,6 +117,7 @@
                         </div>
                     </div>
 
+                    <!-- Commit Input Area -->
                     <div class="space-y-2 pt-2 border-t border-[#2d2d2d]">
                         <textarea id="git-commit-message" placeholder="Mensaje de commit..." rows="3" class="w-full bg-[#181818] border border-[#333333] text-sm text-gray-200 rounded p-2 focus:outline-none focus:border-[#e25c34] resize-none"></textarea>
                         <button id="btn-git-commit" class="w-full py-1.5 bg-[#e25c34] text-white hover:bg-[#d14f29] rounded text-xs font-semibold uppercase tracking-wider transition-colors">
@@ -122,40 +128,41 @@
             </div>
         </div>
 
-        <!-- Center Area (Editor / Monaco / Diff & Bottom Terminal) -->
+        <!-- Center Workspace Area (Tabs + Monaco + Diff + Terminal) -->
         <div class="flex-1 flex flex-col min-w-0">
             
-            <!-- Editor Container -->
+            <!-- Editor Workspace Panel -->
             <div class="flex-1 flex flex-col relative min-h-0 bg-[#1e1e1e]">
                 
-                <!-- Editor Tab & Header Controls -->
-                <div id="editor-header-bar" class="h-9 bg-[#181818] border-b border-[#2d2d2d] flex items-center justify-between px-2 flex-shrink-0 select-none z-10">
-                    <!-- Dynamic Tab Bar Container -->
-                    <div id="tab-bar" class="flex items-center space-x-1 overflow-x-auto flex-1 min-w-0 pr-2 no-scrollbar">
-                        <!-- Tabs populated dynamically by app.js -->
+                <!-- Tab Bar & Action Toolbar Header -->
+                <div id="editor-header" class="h-9 bg-[#181818] border-b border-[#2d2d2d] flex items-center justify-between px-2 flex-shrink-0 z-10 overflow-hidden">
+                    <!-- Scrollable Tabs Container -->
+                    <div id="tab-bar" class="flex items-center space-x-1 overflow-x-auto no-scrollbar flex-1 h-full py-0.5">
+                        <!-- Dynamic Tab Pills -->
                     </div>
-                    <!-- Editor Quick Actions -->
-                    <div class="flex items-center space-x-2 flex-shrink-0 pl-2 border-l border-[#2d2d2d]">
-                        <button id="btn-new-file" class="px-2.5 py-1 bg-[#252525] hover:bg-[#303030] text-gray-300 hover:text-white rounded text-xs flex items-center space-x-1 transition-colors" title="Nueva Pestaña (Ctrl+N)">
-                            <i class="fa-solid fa-plus text-[11px] text-[#e25c34]"></i>
-                            <span class="text-[11px] font-medium">Nuevo</span>
+                    
+                    <!-- Quick Action Buttons -->
+                    <div class="flex items-center space-x-2 pl-2 border-l border-[#2d2d2d] flex-shrink-0">
+                        <button id="btn-new-file" class="px-2 py-1 bg-[#252525] hover:bg-[#333333] text-gray-300 hover:text-white rounded text-xs flex items-center space-x-1 transition-colors" title="Nueva Pestaña (Ctrl+N)">
+                            <i class="fa-solid fa-plus text-[10px]"></i>
+                            <span class="hidden sm:inline">Nuevo</span>
                         </button>
-                        <button id="btn-save-file" class="px-3 py-1 bg-[#e25c34] hover:bg-[#d14f29] text-white rounded text-xs flex items-center space-x-1.5 transition-colors font-semibold shadow-sm" title="Guardar Archivo (Ctrl+S)">
-                            <i class="fa-solid fa-floppy-disk text-[11px]"></i>
-                            <span class="text-[11px]">Guardar</span>
+                        <button id="btn-save-file" class="px-2 py-1 bg-[#e25c34] hover:bg-[#d14f29] text-white rounded text-xs font-medium flex items-center space-x-1 transition-colors" title="Guardar Pestaña Activa (Ctrl+S)">
+                            <i class="fa-solid fa-floppy-disk text-[10px]"></i>
+                            <span class="hidden sm:inline">Guardar</span>
                         </button>
                     </div>
                 </div>
 
-                <!-- Monaco Default Editor Workspace -->
+                <!-- Monaco Standard Editor Mount -->
                 <div id="editor-container" class="w-full flex-1 min-h-0"></div>
 
-                <!-- Monaco Diff Editor Workspace (Hidden by default for AI change verification) -->
+                <!-- Monaco Diff Editor Overlay Workspace -->
                 <div id="diff-editor-container" class="absolute inset-0 bg-[#1e1e1e] flex flex-col hidden z-20">
                     <div class="h-10 bg-[#252525] px-4 flex items-center justify-between border-b border-[#2d2d2d] flex-shrink-0">
                         <div class="flex items-center space-x-2 text-xs">
                             <span class="bg-[#e25c34]/15 text-[#e25c34] px-2 py-0.5 rounded font-semibold border border-[#e25c34]/20">Propuesta de Copiloto</span>
-                            <span class="text-gray-400 font-mono" id="diff-file-label">index.html</span>
+                            <span class="text-gray-400 font-mono" id="diff-file-label">archivo.py</span>
                         </div>
                         <div class="flex items-center space-x-2">
                             <button id="btn-diff-decline" class="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs font-medium flex items-center space-x-1.5 transition-colors">
@@ -172,7 +179,7 @@
                 </div>
             </div>
 
-            <!-- Terminal Panel -->
+            <!-- Integrated Terminal Panel -->
             <div id="terminal-container" class="h-64 bg-[#141414] border-t border-[#2d2d2d] flex flex-col flex-shrink-0 relative">
                 <div class="h-8 bg-[#181818] border-b border-[#232323] px-3 flex items-center justify-between flex-shrink-0">
                     <div class="flex items-center space-x-2">
@@ -180,10 +187,12 @@
                         <span class="text-[10px] bg-green-950 text-green-400 border border-green-800 px-1.5 rounded font-mono">PTY Activo</span>
                     </div>
                     <div class="flex items-center space-x-2 text-gray-400">
-                        <button id="btn-term-clear" class="hover:text-white" title="Limpiar Terminal"><i class="fa-solid fa-trash-can text-xs"></i></button>
+                        <button id="btn-term-clear" class="hover:text-white transition-colors" title="Limpiar Terminal"><i class="fa-solid fa-trash-can text-xs"></i></button>
                     </div>
                 </div>
-                <div id="terminal-body" class="flex-1 p-1 min-h-0 overflow-hidden"></div>
+                <div id="terminal-body" class="flex-1 p-1 min-h-0 overflow-hidden">
+                    <!-- Mount target for xterm.js -->
+                </div>
             </div>
         </div>
 
@@ -195,7 +204,7 @@
                     <i class="fa-solid fa-brain text-sm text-[#e25c34]"></i>
                     <span class="text-xs font-bold tracking-wider text-gray-300">AVFENIX AI COPILOT</span>
                 </div>
-                <span class="text-[10px] bg-green-900/40 text-green-400 px-1.5 py-0.5 rounded border border-green-800/50 font-semibold">
+                <span class="text-[10px] bg-green-900/40 text-green-400 px-1.5 py-0.5 rounded border border-green-800/50 font-semibold font-mono">
                     OpenRouter Free
                 </span>
             </div>
@@ -216,11 +225,11 @@
 
             <!-- Active Tab Context Status Bar -->
             <div id="context-status-bar" class="px-3 py-1.5 bg-[#141414] border-b border-[#252525] flex items-center justify-between text-[11px] text-gray-400 flex-shrink-0">
-                <div class="flex items-center space-x-1.5 truncate">
-                    <i class="fa-solid fa-file-code text-[#e25c34]"></i>
-                    <span id="active-tab-label" class="font-mono text-gray-300 truncate">Sin archivo activo</span>
+                <div class="flex items-center space-x-1.5 truncate flex-1 min-w-0 mr-2">
+                    <i class="fa-solid fa-file-code text-[#e25c34] flex-shrink-0"></i>
+                    <span id="active-tab-label" class="font-mono text-gray-300 truncate italic">Sin archivo activo</span>
                 </div>
-                <label class="flex items-center space-x-1 cursor-pointer select-none text-[10px] text-gray-400 hover:text-gray-200">
+                <label class="flex items-center space-x-1 cursor-pointer select-none text-[10px] text-gray-400 hover:text-gray-200 flex-shrink-0">
                     <input type="checkbox" id="cb-include-context" checked class="accent-[#e25c34] rounded" />
                     <span>Contexto</span>
                 </label>

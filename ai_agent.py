@@ -1,13 +1,47 @@
 import json
 import os
+import re
 import httpx
 from openai import OpenAI
 from git_manager import GitManager
 
+def load_env_file(env_path=".env"):
+    """Reads .env file if present and populates os.environ if key is missing or default."""
+    if os.path.exists(env_path):
+        try:
+            with open(env_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        k, v = line.split("=", 1)
+                        k = k.strip()
+                        v = v.strip().strip("'").strip('"')
+                        if k:
+                            os.environ[k] = v
+        except Exception as e:
+            print(f"Error loading {env_path}: {e}")
+
+def get_openrouter_api_key():
+    """Retrieves OPENROUTER_API_KEY from python-dotenv, manual .env parsing, or os.environ."""
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except ImportError:
+        pass
+
+    # Check local .env files
+    for path in [".env", os.path.join(os.getcwd(), ".env")]:
+        load_env_file(path)
+
+    key = os.getenv("OPENROUTER_API_KEY", "").strip()
+    if key == "your-openrouter-key":
+        key = ""
+    return key
+
 class AIAgent:
     def __init__(self, api_key=None, base_url="https://openrouter.ai/api/v1", model="openrouter/free"):
-        # Default to a placeholder if API key is not set
-        self.api_key = api_key or os.getenv("OPENROUTER_API_KEY")
+        env_key = get_openrouter_api_key()
+        self.api_key = api_key or env_key or ""
         self.base_url = base_url
         self.model = "openrouter/free"
         self.client = None
@@ -17,10 +51,15 @@ class AIAgent:
         self.init_system_prompt()
 
     def setup_client(self):
-        """Initializes the OpenAI client with OpenRouter's base URL and credentials."""
+        """Initializes or updates the OpenAI client with OpenRouter's base URL and credentials."""
+        current_key = get_openrouter_api_key() or self.api_key or "dummy-key-for-init"
         self.client = OpenAI(
             base_url=self.base_url,
-            api_key=self.api_key,
+            api_key=current_key,
+            default_headers={
+                "HTTP-Referer": "https://avfenix-studio.org",
+                "X-Title": "AVFenix Studio IDE"
+            }
         )
 
     def init_system_prompt(self):
@@ -139,7 +178,6 @@ class AIAgent:
         elif name == "write_file":
             filepath = args.get("filepath")
             content = args.get("content")
-            # Propose to the user through the WebSocket
             proposal_msg = json.dumps({
                 "action": "write_proposal",
                 "filepath": filepath,
@@ -153,7 +191,6 @@ class AIAgent:
 
         elif name == "delete_file":
             filepath = args.get("filepath")
-            # Propose file deletion through GTK Modal via WebSocket
             proposal_msg = json.dumps({
                 "action": "delete_proposal",
                 "filepath": filepath
@@ -186,32 +223,47 @@ class AIAgent:
 
         return {"status": "error", "message": f"Unknown tool: {name}"}
 
-    async def chat(self, user_message, ws_callback, model=None, context=None):
+    async def chat(self, user_message, ws_callback, model=None, context=None, **kwargs):
         """Sends a message to OpenRouter, processes possible function/tool calls, 
         and updates the local conversation history."""
         
+        # Check and dynamically reload API Key from .env or environment
+        current_key = get_openrouter_api_key() or self.api_key
+        if not current_key:
+            err_msg = (
+                "⚠️ **OPENROUTER_API_KEY no configurada.**\n\n"
+                "Para solucionar el error de autenticación (401), agrega tu clave en el archivo `.env` en la raíz de tu proyecto:\n"
+                "```env\nOPENROUTER_API_KEY=tu-clave-de-openrouter-aqui\n```\n"
+                "O expórtala en la terminal antes de iniciar la aplicación:\n"
+                "```bash\nexport OPENROUTER_API_KEY=\"tu-clave-de-openrouter-aqui\"\n```"
+            )
+            self.conversation_history.append({"role": "assistant", "content": err_msg})
+            return err_msg
+
+        # Ensure client uses current valid key
+        self.client.api_key = current_key
+
         # Enforce openrouter/free model
         active_model = model or self.model or "openrouter/free"
         if "free" not in active_model:
             active_model = "openrouter/free"
 
-        # Format user prompt with active tab context if provided
-        formatted_message = user_message
-        if context and isinstance(context, dict) and context.get("file"):
-            filepath = context.get("file", "desconocido")
+        # Format message with Active Tab Context if present
+        final_prompt = user_message
+        if context and isinstance(context, dict) and (context.get("filepath") or context.get("file")):
+            filepath = context.get("filepath") or context.get("file")
+            content = context.get("content", "")
             language = context.get("language", "plaintext")
-            code_content = context.get("content", "")
-            formatted_message = (
+            final_prompt = (
                 f"📌 [CONTEXTO DE LA PESTAÑA ACTIVA: {filepath}]\n"
                 f"Lenguaje: `{language}`\n"
-                f"```\n{code_content}\n```\n\n"
+                f"```{language}\n{content}\n```\n\n"
                 f"💬 Consulta del usuario: {user_message}"
             )
 
-        self.conversation_history.append({"role": "user", "content": formatted_message})
+        self.conversation_history.append({"role": "user", "content": final_prompt})
 
         try:
-            # Query the AI client
             response = self.client.chat.completions.create(
                 model=active_model,
                 messages=self.conversation_history,
@@ -222,16 +274,17 @@ class AIAgent:
             assistant_message = response.choices[0].message
             self.conversation_history.append(assistant_message)
 
-            # Check if the assistant wants to call a tool/function
             if assistant_message.tool_calls:
                 for tool_call in assistant_message.tool_calls:
                     name = tool_call.function.name
-                    args = json.loads(tool_call.function.argv or tool_call.function.arguments)
+                    raw_args = getattr(tool_call.function, "arguments", "{}") or "{}"
+                    if isinstance(raw_args, str):
+                        args = json.loads(raw_args) if raw_args.strip() else {}
+                    else:
+                        args = raw_args
                     
-                    # Execute tool asynchronously
                     result = await self.execute_tool(name, args, ws_callback)
                     
-                    # Feed tool execution result back to the model's history
                     self.conversation_history.append({
                         "role": "tool",
                         "tool_call_id": tool_call.id,
@@ -239,7 +292,6 @@ class AIAgent:
                         "content": json.dumps(result)
                     })
 
-                # Call LLM again to formulate the final answer based on the tool's result
                 second_response = self.client.chat.completions.create(
                     model=active_model,
                     messages=self.conversation_history
