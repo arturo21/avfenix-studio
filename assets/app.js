@@ -354,35 +354,36 @@ function saveActiveFile() {
     }));
 }
 
-// 6. Monaco Diff System (Review AI Proposals)
+// 6. Sistema de Diff y Aprobación de la IA (Solución anti-congelamiento para WebKitGTK)
 function openDiffProposal(filepath, newContent) {
     const diffContainer = document.getElementById("diff-editor-container");
     const diffLabel = document.getElementById("diff-file-label");
-    
+        
     if (diffLabel) diffLabel.textContent = filepath;
     if (diffContainer) diffContainer.classList.remove("hidden");
 
+    // 1. Obtener contenido original seguro
     let originalContent = "";
-    if (activeFilePath === filepath && monacoEditor) {
+    const activeTab = tabs.find(t => t.id === activeTabId || t.filepath === filepath);
+    if (activeTab && activeTab.model) {
+        originalContent = activeTab.model.getValue();
+    } else if (monacoEditor) {
         originalContent = monacoEditor.getValue();
     }
 
-    let language = 'javascript';
-    if (filepath.endsWith('.py')) language = 'python';
-    else if (filepath.endsWith('.html')) language = 'html';
-    else if (filepath.endsWith('.css')) language = 'css';
-    else if (filepath.endsWith('.json')) language = 'json';
-    else if (filepath.endsWith('.sh')) language = 'shell';
+    let language = getFileLanguage(filepath);
 
-    // Dispose old models if monacoDiffEditor has them
+    // 2. Desvincular modelos anteriores del Diff Editor para liberar memoria
     if (monacoDiffEditor) {
-        const oldModel = monacoDiffEditor.getModel();
-        if (oldModel) {
-            if (oldModel.original) try { oldModel.original.dispose(); } catch(e) {}
-            if (oldModel.modified) try { oldModel.modified.dispose(); } catch(e) {}
+        const currentDiffModel = monacoDiffEditor.getModel();
+        monacoDiffEditor.setModel(null);
+        if (currentDiffModel) {
+            if (currentDiffModel.original) try { currentDiffModel.original.dispose(); } catch(e){}
+            if (currentDiffModel.modified) try { currentDiffModel.modified.dispose(); } catch(e){}
         }
     }
 
+    // 3. Crear modelos temporales para la comparación
     const originalModel = monaco.editor.createModel(originalContent, language);
     const modifiedModel = monaco.editor.createModel(newContent, language);
 
@@ -391,63 +392,76 @@ function openDiffProposal(filepath, newContent) {
             original: originalModel,
             modified: modifiedModel
         });
-        try { monacoDiffEditor.layout(); } catch(e) {}
+        setTimeout(() => {
+            if (monacoDiffEditor) monacoDiffEditor.layout();
+        }, 20);
     }
 
-    const closeDiffView = () => {
+    // 4. Limpieza diferida para evitar colapsar el hilo visual de WebKitGTK
+    const closeDiffAndClean = () => {
+        // Ocultar primero el panel comparativo
         if (diffContainer) diffContainer.classList.add("hidden");
+        
+        // Desvincular del Diff Editor antes de destruir los modelos
         if (monacoDiffEditor) {
             monacoDiffEditor.setModel(null);
         }
-        try { originalModel.dispose(); } catch(e) {}
-        try { modifiedModel.dispose(); } catch(e) {}
 
-        if (monacoEditor) {
-            setTimeout(() => {
-                try {
-                    monacoEditor.layout();
-                    monacoEditor.focus();
-                } catch(e) {}
-            }, 50);
-        }
+        // Destruir modelos temporales en el siguiente tick del event loop
+        setTimeout(() => {
+            try { originalModel.dispose(); } catch(e){}
+            try { modifiedModel.dispose(); } catch(e){}
+            
+            // Recalcular dimensiones del editor principal tras el cambio de DOM
+            if (monacoEditor) {
+                monacoEditor.layout();
+                monacoEditor.focus();
+            }
+        }, 50);
     };
 
-    // Wire approval events
+    // 5. Eventos de los botones de acción
     const btnAccept = document.getElementById("btn-diff-accept");
+    const btnDecline = document.getElementById("btn-diff-decline");
+
     if (btnAccept) {
         btnAccept.onclick = () => {
-            // Send save action to python backend
-            socket.send(JSON.stringify({
+            // A. Guardar en disco vía WebSocket
+            sendSafe({
                 action: "save_file",
                 filepath: filepath,
                 content: newContent
-            }));
+            });
 
-            // Update active file & monacoEditor immediately with new content
-            activeFilePath = filepath;
-            if (monacoEditor) {
-                const newModel = monaco.editor.createModel(newContent, language);
-                monacoEditor.setModel(newModel);
+            // B. Actualizar el contenido de la pestaña y del editor principal
+            const targetTab = tabs.find(t => t.filepath === filepath || t.id === activeTabId);
+            if (targetTab) {
+                targetTab.filepath = filepath;
+                targetTab.title = filepath.split("/").pop();
+                targetTab.content = newContent;
+                targetTab.isDirty = false;
+                targetTab.isNew = false;
+                if (targetTab.model) {
+                    targetTab.model.setValue(newContent);
+                } else if (monacoEditor) {
+                    monacoEditor.setValue(newContent);
+                }
+            } else if (monacoEditor) {
+                monacoEditor.setValue(newContent);
             }
 
-            const label = document.getElementById("current-file-label");
-            if (label) label.textContent = filepath;
-            const chatLabel = document.getElementById("chat-active-file-label");
-            if (chatLabel) chatLabel.textContent = filepath;
-
-            closeDiffView();
-
-            showNotification("success");
-            addSystemMessage();
+            // C. Cerrar y limpiar diferidamente
+            closeDiffAndClean();
+            showNotification(`Propuesta aplicada a ${filepath}`, "success");
+            addSystemMessage(`Cambios aceptados y guardados en: ${filepath}`);
         };
     }
 
-    const btnDecline = document.getElementById("btn-diff-decline");
     if (btnDecline) {
         btnDecline.onclick = () => {
-            closeDiffView();
+            closeDiffAndClean();
             showNotification("Cambios propuestos rechazados.", "info");
-            addSystemMessage();
+            addSystemMessage(`Cambios propuestos para ${filepath} rechazados.`);
         };
     }
 }
