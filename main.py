@@ -37,7 +37,7 @@ class AVFenixStudioApp(Gtk.Application):
             self.win.set_default_size(1400, 900)
             self.win.set_title("AVFenix Studio IDE (GTK 3)")
 
-            # Create vertical layout box (GTK 3)
+            # Create vertical layout box
             box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
             self.win.add(box)
 
@@ -50,6 +50,7 @@ class AVFenixStudioApp(Gtk.Application):
             except AttributeError:
                 pass
 
+            # Pack WebView to the layout box
             box.pack_start(self.webview, True, True, 0)
 
             # Locate local HTML assets
@@ -70,28 +71,25 @@ class AVFenixStudioApp(Gtk.Application):
         
         self.git_manager.initialize_repo()
         
-        # Async server runner compatible with websockets 13+
         async def run_server():
             async with websockets.serve(self.websocket_handler, "127.0.0.1", 8765):
-                await asyncio.Future()
+                await asyncio.Future()  # Keep server running
 
         try:
             self.loop.run_until_complete(run_server())
         except Exception as e:
-            print(f"WebSocket loop exception: {e}")
+            print(f"WebSocket loop error: {e}")
 
     async def websocket_handler(self, websocket):
         """Handles incoming messages and directs requests to terminal, git, or AI modules."""
         self.websocket_connections.add(websocket)
         try:
             async for message in websocket:
-                # 1. Terminal stream handler
                 if message.startswith("term_data:"):
                     raw_data = message[len("term_data:"):]
                     if self.pty_terminal:
                         await self.pty_terminal.write(raw_data)
 
-                # 2. Terminal resize handler
                 elif message.startswith("term_resize:"):
                     try:
                         cols, rows = map(int, message[len("term_resize:"):].split(","))
@@ -100,7 +98,6 @@ class AVFenixStudioApp(Gtk.Application):
                     except ValueError:
                         pass
 
-                # 3. JSON commands dispatcher
                 else:
                     try:
                         data = json.loads(message)
@@ -114,8 +111,8 @@ class AVFenixStudioApp(Gtk.Application):
                         
                         elif action == "chat_msg":
                             user_text = data.get("message")
-                            req_model = data.get("model", "openrouter/free")
-                            req_context = data.get("context")
+                            model_opt = data.get("model", "openrouter/free")
+                            context_opt = data.get("context", None)
 
                             async def ws_send_callback(msg):
                                 await websocket.send(msg)
@@ -123,8 +120,8 @@ class AVFenixStudioApp(Gtk.Application):
                             ai_reply = await self.ai_agent.chat(
                                 user_text, 
                                 ws_send_callback, 
-                                model=req_model, 
-                                context=req_context
+                                model=model_opt, 
+                                context=context_opt
                             )
                             await websocket.send(json.dumps({"action": "chat_reply", "message": ai_reply}))
 
@@ -147,15 +144,15 @@ class AVFenixStudioApp(Gtk.Application):
 
                         elif action == "save_file":
                             filepath = data.get("filepath")
-                            content = data.get("content")
+                            content = data.get("content", "")
                             try:
-                                # Ensure parent directories exist
                                 parent_dir = os.path.dirname(filepath)
                                 if parent_dir and not os.path.exists(parent_dir):
                                     os.makedirs(parent_dir, exist_ok=True)
 
                                 with open(filepath, "w", encoding="utf-8") as f:
                                     f.write(content)
+
                                 await websocket.send(json.dumps({
                                     "action": "save_success",
                                     "filepath": filepath
@@ -212,9 +209,6 @@ class AVFenixStudioApp(Gtk.Application):
         finally:
             if websocket in self.websocket_connections:
                 self.websocket_connections.remove(websocket)
-            if self.pty_terminal:
-                self.pty_terminal.stop()
-                self.pty_terminal = None
 
     def list_files_flat(self, root_dir):
         """Lists workspace files excluding system and build dependencies."""
@@ -223,7 +217,6 @@ class AVFenixStudioApp(Gtk.Application):
             dirs[:] = [d for d in dirs if d not in (".git", "node_modules", "__pycache__", "venv", ".venv")]
             for file in files:
                 rel_path = os.path.relpath(os.path.join(root, file), root_dir)
-                # Keep output clean without excluding valid user code
                 if not rel_path.startswith("out/") and rel_path != "avfenix_studio_gtk4.zip":
                     tree.append(rel_path)
         return tree
@@ -238,9 +231,7 @@ class AVFenixStudioApp(Gtk.Application):
             text="Confirmar Eliminación de Archivo"
         )
         dialog.format_secondary_text(
-            f"El Agente de IA de AVFenix Studio ha sugerido eliminar el siguiente archivo:\n\n"
-            f"'{filepath}'\n\n"
-            f"¿Desea autorizar la eliminación de este archivo en su disco local?"
+            f"El Agente de IA de AVFenix Studio ha sugerido eliminar el siguiente archivo:\n\n'{filepath}'\n\n¿Desea autorizar la eliminación de este archivo en su disco local?"
         )
 
         def on_response(dialog, response_id):

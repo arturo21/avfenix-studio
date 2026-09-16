@@ -1,12 +1,11 @@
 import json
 import os
-import re
 import httpx
 from openai import OpenAI
 from git_manager import GitManager
 
 def load_env_file():
-    """Attempts to load environment variables from a local .env file."""
+    """Loads environment variables from local .env file in project root if available."""
     env_path = os.path.join(os.getcwd(), ".env")
     if os.path.exists(env_path):
         try:
@@ -14,24 +13,15 @@ def load_env_file():
                 for line in f:
                     line = line.strip()
                     if line and not line.startswith("#") and "=" in line:
-                        key, value = line.split("=", 1)
-                        key = key.strip()
-                        value = value.strip().strip("'").strip('"')
-                        os.environ[key] = value
-        except Exception as e:
-            print(f"Error reading .env file: {e}")
-
-def get_openrouter_api_key():
-    """Retrieves OpenRouter API Key from .env or system environment."""
-    load_env_file()
-    key = os.getenv("OPENROUTER_API_KEY", "").strip()
-    if not key or key == "your-openrouter-key" or key == "dummy-key-for-init":
-        return None
-    return key
+                        key, val = line.split("=", 1)
+                        os.environ[key.strip()] = val.strip().strip("'").strip('"')
+        except Exception:
+            pass
 
 class AIAgent:
     def __init__(self, api_key=None, base_url="https://openrouter.ai/api/v1", model="openrouter/free"):
-        self.api_key = api_key or get_openrouter_api_key() or "dummy-key"
+        load_env_file()
+        self.api_key = api_key or os.getenv("OPENROUTER_API_KEY", "")
         self.base_url = base_url
         self.model = "openrouter/free"
         self.client = None
@@ -41,11 +31,14 @@ class AIAgent:
         self.init_system_prompt()
 
     def setup_client(self):
-        """Initializes the OpenAI client configured for OpenRouter's API."""
-        current_key = get_openrouter_api_key() or self.api_key or "dummy-key"
+        """Initializes the OpenAI client with OpenRouter's base URL and credentials."""
+        load_env_file()
+        key = self.api_key or os.getenv("OPENROUTER_API_KEY", "")
+        if not key or key == "your-openrouter-key":
+            key = "dummy-key-for-init"
         self.client = OpenAI(
             base_url=self.base_url,
-            api_key=current_key,
+            api_key=key,
             default_headers={
                 "HTTP-Referer": "https://avfenix-studio.org",
                 "X-Title": "AVFenix Studio IDE"
@@ -67,7 +60,7 @@ class AIAgent:
         ]
 
     def get_tools_definition(self):
-        """Returns function definitions for OpenRouter Tool Calling."""
+        """Returns the function definitions for OpenRouter Tool Calling (Function Calling)."""
         return [
             {
                 "type": "function",
@@ -145,7 +138,7 @@ class AIAgent:
                 "type": "function",
                 "function": {
                     "name": "get_git_status",
-                    "description": "Queries current local Git repository status.",
+                    "description": "Queries the current local Git repository status (active branch, staged files, modified/untracked files, and commits ahead/behind).",
                     "parameters": {
                         "type": "object",
                         "properties": {}
@@ -155,7 +148,8 @@ class AIAgent:
         ]
 
     async def execute_tool(self, name, args, ws_callback):
-        """Executes the specific tool called by the model."""
+        """Executes the specific tool called by the model. 
+        If it is a write/delete proposal, it routes the proposal through the websocket callback."""
         if name == "read_file":
             filepath = args.get("filepath")
             try:
@@ -213,26 +207,26 @@ class AIAgent:
         return {"status": "error", "message": f"Unknown tool: {name}"}
 
     async def chat(self, user_message, ws_callback, model=None, context=None, **kwargs):
-        """Sends a message to OpenRouter, processes tool calls, and updates conversation history."""
-        active_model = model or self.model or "openrouter/free"
-        if "free" not in active_model:
-            active_model = "openrouter/free"
-
-        # Check API key from .env file or environment
-        api_key = get_openrouter_api_key()
-        if not api_key:
+        """Sends a message to OpenRouter, processes tool calls, and updates history."""
+        load_env_file()
+        current_key = os.getenv("OPENROUTER_API_KEY", "").strip()
+        
+        if not current_key or current_key == "your-openrouter-key":
             err_msg = (
                 "⚠️ **OPENROUTER_API_KEY no encontrada en .env ni en las variables de entorno.**\n\n"
-                "Para solucionar este problema:\n"
-                "1. Crea un archivo `.env` en la raíz del proyecto con tu clave:\n"
-                "   ```env\nOPENROUTER_API_KEY=tu-clave-de-openrouter-aqui\n```\n"
-                "2. O expórtala en tu terminal antes de iniciar la aplicación:\n"
-                "   ```bash\nexport OPENROUTER_API_KEY=\"tu-clave-de-openrouter-aqui\"\n```"
+                "Para solucionar este error:\n"
+                "1. Crea un archivo `.env` en la raíz del proyecto (`/var/www/html/avfenix-studio/.env`).\n"
+                "2. Agrega la línea: `OPENROUTER_API_KEY=sk-or-v1-tu-clave-real-de-openrouter`\n"
+                "3. Reinicia la aplicación (`python3 main.py`)."
             )
             self.conversation_history.append({"role": "assistant", "content": err_msg})
             return err_msg
 
-        self.client.api_key = api_key
+        self.client.api_key = current_key
+
+        active_model = model or self.model or "openrouter/free"
+        if "free" not in active_model:
+            active_model = "openrouter/free"
 
         formatted_message = user_message
         if context and isinstance(context, dict) and (context.get("filepath") or context.get("file")):
@@ -262,7 +256,7 @@ class AIAgent:
             if assistant_message.tool_calls:
                 for tool_call in assistant_message.tool_calls:
                     name = tool_call.function.name
-                    raw_args = getattr(tool_call.function, "arguments", "{}") or "{}"
+                    raw_args = getattr(tool_call.function, "arguments", "{}")
                     if isinstance(raw_args, str):
                         args = json.loads(raw_args) if raw_args.strip() else {}
                     else:
@@ -285,9 +279,9 @@ class AIAgent:
                 self.conversation_history.append({"role": "assistant", "content": final_content})
                 return final_content
 
-            return assistant_message.content or "Respuesta procesada correctamente."
+            return assistant_message.content
 
         except Exception as e:
-            err_msg = f"API Error ({active_model}): {str(e)}"
+            err_msg = f"API Error ({self.model}): {str(e)}"
             self.conversation_history.append({"role": "assistant", "content": err_msg})
             return err_msg
